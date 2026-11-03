@@ -55,6 +55,16 @@ const formatDate = (d) => {
   });
 };
 
+// ─── Format file size: 1.2 MB / 450 KB ────────────────────────────────────
+const formatFileSize = (bytes) => {
+  if (!bytes || isNaN(bytes) || Number(bytes) <= 0) return "";
+  const num = Number(bytes);
+  if (num < 1024) return `${num} B`;
+  if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+  if (num < 1024 * 1024 * 1024) return `${(num / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(num / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
+
 // ─── Extract a specific log entry by action ───────────────────────────────
 // Returns the LAST matching log for that action
 const getLogByAction = (logs = [], action) => {
@@ -667,24 +677,33 @@ const SecurityModels = ({ requestId, onClose, onEdit }) => {
                         </span>
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                        {request.files.map((file, idx) => (
-                          <div key={idx} className={`security-file-pill ${timeLeft === 0 ? "expired" : ""}`}>
-                            <Icon icon="material-symbols:insert-drive-file-outline" width="16" />
-                            <span className="file-name" title={file.originalName}>{file.originalName}</span>
-                            {timeLeft === 0 ? (
-                              <span className="expired-label">Expired</span>
-                            ) : (
-                              <a 
-                                href={file.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="file-view-link"
-                              >
-                                <Icon icon="material-symbols:open-in-new" width="14" />
-                              </a>
-                            )}
-                          </div>
-                        ))}
+                        {request.files.map((file, idx) => {
+                          const sizeStr = formatFileSize(file.size || file.fileSize);
+                          return (
+                            <div key={idx} className={`security-file-pill ${timeLeft === 0 ? "expired" : ""}`}>
+                              <Icon icon="material-symbols:insert-drive-file-outline" width="18" style={{ flexShrink: 0 }} />
+                              <div className="file-meta">
+                                <span className="file-name" title={file.originalName}>{file.originalName}</span>
+                                {sizeStr && (
+                                  <span className="file-size">{sizeStr}</span>
+                                )}
+                              </div>
+                              {timeLeft === 0 ? (
+                                <span className="expired-label">Expired</span>
+                              ) : (
+                                <a 
+                                  href={file.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="file-view-link"
+                                  title="View file"
+                                >
+                                  <Icon icon="material-symbols:open-in-new" width="14" />
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

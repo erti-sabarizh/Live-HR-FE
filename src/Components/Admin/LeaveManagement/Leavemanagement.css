@@ -192,6 +192,10 @@
   grid-template-columns: 40px 50px 1.2fr 130px 2.8fr 110px;
 }
 
+.lm-table-cols.lm-table-cols--readonly {
+  grid-template-columns: 50px 1.2fr 130px 2.8fr 110px;
+}
+
 /* ---- Rules Badges & Summary in Table ---- */
 .lm-count-pill-group {
   display: flex;

@@ -134,6 +134,7 @@
 }
 
 .wfh-badge {
+  margin-left: 6px;
   /* background: #e3f2fd;
   color: #1976d2; */
   padding: 2px 8px;
@@ -2343,3 +2344,202 @@
   }
 }
 
+/* ==========================================================================
+   Employee Activity - S.NO, Toggle & Status Elements
+   ========================================================================== */
+
+.emp-activity-sno-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.emp-activity-perm-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background-color: #f1f5f9;
+  color: #64748b;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.emp-activity-perm-toggle:hover {
+  background-color: #e2e8f0;
+}
+
+.emp-activity-perm-toggle.active {
+  background-color: #e0e7ff;
+  color: #4338ca;
+}
+
+.emp-activity-perm-chevron {
+  transition: transform 0.2s ease;
+}
+
+.emp-activity-perm-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.emp-activity-emp-name {
+  font-weight: 500;
+}
+
+.admin-dash-status-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.admin-dash-status-wrapper .admin-dash-status-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 0;
+  width: auto;
+}
+
+.admin-dash-conversion-btn {
+  padding: 3px 9px;
+  font-size: 11px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f59e0b;
+  color: #ffffff;
+  border: none;
+  white-space: nowrap;
+  transition: background 0.2s ease;
+}
+
+.admin-dash-conversion-btn:hover {
+  background: #d97706;
+}
+
+.admin-dash-converted-badge {
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.admin-dash-conversion-rejected-badge {
+  background: #f3f4f6;
+  color: #4b5563;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+/* ==========================================================================
+   Employee Activity - Expanded Permission Details
+   ========================================================================== */
+
+.permission-expanded-row {
+  background-color: #f8fafc;
+}
+
+.permission-expanded-cell {
+  padding: 12px 18px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.permission-expanded-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.permission-expanded-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.permission-expanded-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.permission-expanded-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.permission-expanded-val-applied {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.permission-expanded-val-used {
+  font-weight: 600;
+}
+
+.permission-expanded-val-used.used-regular {
+  color: #059669;
+}
+
+.permission-expanded-val-used.used-warning {
+  color: #d97706;
+}
+
+.permission-expanded-val-used.used-exceeded {
+  color: #4338ca;
+}
+
+/* Note: Left border completely removed, red color removed */
+.permission-expanded-note {
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  border-left: none !important;
+}
+
+.permission-expanded-note.note-exceeded {
+  color: #1e3a8a;
+  background-color: #f0f7ff;
+  border: 1px solid #dbeafe;
+  border-left: none !important;
+}
+
+.permission-expanded-note.note-regular {
+  color: #334155;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: none !important;
+}
+
+.permission-expanded-note strong {
+  font-weight: 600;
+}
+
+.permission-expanded-note.note-exceeded strong {
+  color: #1e40af;
+}

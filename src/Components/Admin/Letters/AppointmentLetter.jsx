@@ -296,9 +296,22 @@ const compileTemplateToHtml = (templateStr, data, letterType = "", isTemplatePre
 const AppointmentLetter = () => {
   const { user } = useUser();
 
-  // Check authorization: only Admin or HR can access
+  // Check authorization: Admin, HR, or employees with menu permission
   const isAuthorized = useMemo(() => {
-    return user && (user.role === "admin" || user.isHr === true);
+    if (!user) return false;
+    if (user.role === "admin" || user.isHr === true) return true;
+    const clean = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return (user.permissions || []).some((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const mod = clean(p.module);
+      const sub = clean(p.subMenu);
+      if (mod.includes("slip") || mod.includes("letter")) {
+        if (!sub || sub === "" || sub.includes("entiremenu") || sub.includes("appointment")) {
+          return true;
+        }
+      }
+      return false;
+    });
   }, [user]);
 
   // Tab & letter type

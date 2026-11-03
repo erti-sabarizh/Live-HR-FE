@@ -358,6 +358,12 @@
   margin: 0;
 }
 
+.employee-task-details-popup-container--wide {
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
 .employee-task-detailsequal-popup-container {
   width: min(550px, 95%);
   background: #ffffff;

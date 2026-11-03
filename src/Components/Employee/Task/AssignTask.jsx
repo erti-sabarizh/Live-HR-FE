@@ -924,7 +924,7 @@ function AssignTask({ onClose, onSuccess }) {
           <div className="task-form">
 
             {/* Category + Project Row */}
-            <div className="form-row" style={{ marginBottom: "0px" }} >
+            <div className="form-row at-cat-proj-row">
               {/* Category */}
               <div className="form-group" ref={categoryRef}>
                 <label className="mb-1">Category *</label>
@@ -1008,7 +1008,7 @@ function AssignTask({ onClose, onSuccess }) {
 
             {/* Work Type */}
             {isStackEligibleCategory(formData.category) && (
-              <div className="form-group animate-fade-in" style={{ marginBottom: "12px" }}>
+              <div className="form-group animate-fade-in at-work-type-group" style={{ marginBottom: "8px" }}>
                 <label className="mb-1" style={{ fontSize: "12px", fontWeight: "400", color: "#868585" }}>Work Type</label>
                 <div
                   style={{
@@ -1088,7 +1088,7 @@ function AssignTask({ onClose, onSuccess }) {
             )}
 
             {/* Pages Radio & Multi-select */}
-            <div className="form-group" style={{ marginBottom: formData.hasPages ? "8px" : "12px" }}>
+            <div className="form-group at-pages-radio-group" style={{ marginTop: isStackEligibleCategory(formData.category) ? "4px" : "8px", marginBottom: formData.hasPages ? "4px" : "8px" }}>
               <label
                 style={{
                   display: "inline-flex",
@@ -1126,7 +1126,7 @@ function AssignTask({ onClose, onSuccess }) {
             </div>
 
             {formData.hasPages && (
-              <div className="form-group animate-fade-in" style={{ marginBottom: "12px" }}>
+              <div className="form-group animate-fade-in at-pages-select-group" style={{ marginTop: "4px", marginBottom: "12px" }}>
                 <label style={{ fontSize: "12px", fontWeight: "400", color: "#868585" }}>Select Page</label>
                 {activeOtherField === "page" ? (
                   <div className="atMeta__inlineAdd animate-fade-in">
@@ -1280,7 +1280,7 @@ function AssignTask({ onClose, onSuccess }) {
               />
             </div>
             {/* Start Date + Due Date + End Date */}
-            <div className="form-row " style={{ marginBottom: "5px" }}>
+            <div className="form-row " style={{ marginBottom: "14px" }}>
               <div className="form-group">
                 <label>Start Date *</label>
                 <div className="assign-date-wrapper position-relative">
@@ -1358,7 +1358,7 @@ function AssignTask({ onClose, onSuccess }) {
             </div>
 
             {/* Priority + Status */}
-            <div className="form-row" style={{ marginBottom: "0px" }} >
+            <div className="form-row" style={{ marginBottom: "14px" }} >
               <div className="form-group">
                 <label>Priority *</label>
                 <CustomDropdown

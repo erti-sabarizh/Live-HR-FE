@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { portalInstance } from "../../Services/instance"; // adjust path as needed
+import { useNavigate } from "react-router-dom";
+import { portalInstance } from "../../../Services/instance";
 import "./Notificationbell.css";
 
 const NotificationBell = () => {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -67,12 +69,18 @@ const NotificationBell = () => {
   // Get notification icon based on type
   const getNotificationIcon = (type) => {
     switch (type) {
-      case "PROFILE_EDIT_REQUEST": return "📝";
-      case "PROFILE_EDIT_APPROVED": return "✅";
-      case "PROFILE_EDIT_REJECTED": return "❌";
+      case "PROFILE_EDIT_REQUEST":
+      case "EDIT_REQUEST": return "📝";
+      case "PROFILE_EDIT_APPROVED":
+      case "EDIT_APPROVED": return "✅";
+      case "PROFILE_EDIT_REJECTED":
+      case "EDIT_REJECTED": return "❌";
+      case "PROFILE_COMPLETION_REQUEST": return "📋";
+      case "PROFILE_APPROVED": return "✅";
+      case "PROFILE_REJECTED": return "❌";
       case "SECURITY_REQUEST": return "🛡️";
       case "SECURITY_APPROVED": return "🔓";
-      case "SECURITY_REJECTED": return "";
+      case "SECURITY_REJECTED": return "❌";
       case "LEAVE_REQUEST":
       case "WFH_REQUEST": return "✈️";
       case "LEAVE_APPROVED":
@@ -86,9 +94,15 @@ const NotificationBell = () => {
   // Get notification color based on type
   const getNotificationColor = (type) => {
     switch (type) {
-      case "PROFILE_EDIT_REQUEST": return "#3b82f6";
-      case "PROFILE_EDIT_APPROVED": return "#22c55e";
-      case "PROFILE_EDIT_REJECTED": return "#ef4444";
+      case "PROFILE_EDIT_REQUEST":
+      case "EDIT_REQUEST": return "#3b82f6";
+      case "PROFILE_EDIT_APPROVED":
+      case "EDIT_APPROVED": return "#22c55e";
+      case "PROFILE_EDIT_REJECTED":
+      case "EDIT_REJECTED": return "#ef4444";
+      case "PROFILE_COMPLETION_REQUEST": return "#6366f1";
+      case "PROFILE_APPROVED": return "#10b981";
+      case "PROFILE_REJECTED": return "#ef4444";
       case "SECURITY_REQUEST": return "#6366f1";
       case "SECURITY_APPROVED": return "#22c55e";
       case "SECURITY_REJECTED": return "#ef4444";
@@ -176,7 +190,13 @@ const NotificationBell = () => {
                 <div
                   key={notification._id}
                   className={`notification-item ${!notification.read ? "unread" : ""}`}
-                  onClick={() => !notification.read && markAsRead(notification._id)}
+                  onClick={() => {
+                    if (!notification.read) markAsRead(notification._id);
+                    setShowDropdown(false);
+                    if (notification.metadata?.url) {
+                      navigate(notification.metadata.url);
+                    }
+                  }}
                 >
                   <div
                     className="notification-icon"

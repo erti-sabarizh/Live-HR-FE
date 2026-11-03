@@ -2693,7 +2693,7 @@ input.dwu-emp__filterInput:focus {
 /* Top Metadata Grid */
 .dwu-card-meta-grid {
   display: grid;
-  grid-template-columns: 80px 1.2fr minmax(max-content, 1.8fr) 1fr 90px;
+  grid-template-columns: 70px 1.1fr minmax(max-content, 1.5fr) 100px 1fr 90px;
   align-items: flex-start;
   gap: 16px;
   width: 100%;
@@ -3162,7 +3162,7 @@ input.dwu-emp__filterInput:focus {
 /* Responsive adjustments for all devices */
 @media (max-width: 992px) {
   .dwu-card-meta-grid {
-    grid-template-columns: 60px 1.2fr 1.5fr 1fr 80px;
+    grid-template-columns: 55px 1fr 1.3fr 90px 1fr 80px;
     gap: 12px;
   }
 }

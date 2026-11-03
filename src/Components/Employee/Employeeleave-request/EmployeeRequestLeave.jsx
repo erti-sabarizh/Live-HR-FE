@@ -37,8 +37,6 @@ const EmployeeRequestLeave = () => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState(initialFormState);
   const [originalFormData, setOriginalFormData] = useState(initialFormState);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [activeTab, setActiveTab] = useState("leave");
@@ -57,6 +55,7 @@ const EmployeeRequestLeave = () => {
   const [permissionConfig, setPermissionConfig] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [showSpecificBalances, setShowSpecificBalances] = useState(false);
+  const [combinedIntimationModal, setCombinedIntimationModal] = useState(null);
 
   const dayOptions = [
     { value: "Half Day", label: "Half Day" },
@@ -322,11 +321,6 @@ const EmployeeRequestLeave = () => {
     return `${dayS} ${monthS} - ${dayE} ${monthE}`;
   };
 
-  useEffect(() => {
-    const hasChanges =
-      JSON.stringify(formData) !== JSON.stringify(originalFormData);
-    setHasUnsavedChanges(hasChanges);
-  }, [formData, originalFormData]);
 
   useEffect(() => {
     if (
@@ -779,6 +773,37 @@ const EmployeeRequestLeave = () => {
     return true;
   };
 
+  const handleConfirmCombined = async () => {
+    setCombinedIntimationModal(null);
+    const permPayload = {
+      fromDate: formData.fromDate,
+      fromTime: formData.startTime,
+      toTime: formData.endTime,
+      reasonType: formData.reasonType,
+      detailedReason: formData.detailedReason,
+      permissionType: formData.permissionType,
+      isCombinedHalfDay: true,
+    };
+    try {
+      setLoading(true);
+      await portalInstance.post("/api/leaves/permission", permPayload);
+      toast.success("Combined Permission & Half-Day Leave request submitted successfully");
+      handleFormClose();
+      fetchLeaveRequests();
+      fetchLeaveBalances();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to submit request");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSwitchToHalfDay = () => {
+    setCombinedIntimationModal(null);
+    setActiveTab("leave");
+    setFormData((prev) => ({ ...prev, dayType: "Half Day" }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -849,7 +874,6 @@ const EmployeeRequestLeave = () => {
       setOriginalFormData(initialFormState);
       setShowForm(false);
       setEditingLeaveId(null);
-      setHasUnsavedChanges(false);
     } catch (err) {
       console.error(err);
       const msg = err?.response?.data?.message || "Failed to submit request";
@@ -902,7 +926,6 @@ const EmployeeRequestLeave = () => {
     setOriginalFormData(newFormData);
     setShowForm(true);
     setShowLeaveModal(false);
-    setHasUnsavedChanges(false);
   };
 
   // ✅ ISSUE 5 FIX — Cancel message now handles permission type
@@ -935,32 +958,10 @@ const EmployeeRequestLeave = () => {
   };
 
   const handleFormClose = () => {
-    if (hasUnsavedChanges) {
-      setShowUnsavedModal(true);
-    } else {
-      closeFormWithoutSaving();
-    }
-  };
-
-  const closeFormWithoutSaving = () => {
     setShowForm(false);
     setEditingLeaveId(null);
     setFormData(initialFormState);
     setOriginalFormData(initialFormState);
-    setHasUnsavedChanges(false);
-    setShowUnsavedModal(false);
-  };
-
-  const handleSaveAndClose = async () => {
-    setShowUnsavedModal(false);
-    const form = document.getElementById("leaveRequestForm");
-    if (form) {
-      const submitEvent = new Event("submit", {
-        cancelable: true,
-        bubbles: true,
-      });
-      form.dispatchEvent(submitEvent);
-    }
   };
 
   const filteredRequests = useMemo(() => {
@@ -991,42 +992,6 @@ const EmployeeRequestLeave = () => {
   const handlePageChange = (page) => {
     setCurrentPage(page);
   };
-
-  const UnsavedChangesModal = () => (
-    <div className="unsaved-modal-overlay">
-      <div className="unsaved-modal-content">
-        <button
-          type="button"
-          className="modal-close-btn"
-          onClick={() => setShowUnsavedModal(false)}
-          aria-label="Close"
-        >
-          ✕
-        </button>
-
-        <h3 className="unsaved-modal-title">Unsaved Changes</h3>
-
-        <p className="unsaved-modal-text">
-          You have unsaved changes. Do you want to save them before closing?
-        </p>
-
-        <div className="unsaved-modal-buttons">
-          <button
-            onClick={closeFormWithoutSaving}
-            className="unsaved-modal-btn unsaved-modal-btn--discard"
-          >
-            Discard Changes
-          </button>
-          <button
-            onClick={handleSaveAndClose}
-            className="unsaved-modal-btn unsaved-modal-btn--save"
-          >
-            Save Changes
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 
   const getFormTitle = () => {
     return activeTab === "leave"
@@ -1061,6 +1026,110 @@ const EmployeeRequestLeave = () => {
     );
   }, [leaveBalances]);
 
+  // ── Calculate dynamic Permission Quota & Usage ──
+  // Rule:
+  // - Informed permissions (status: "INFORMED" / "Informed"): Admin does not approve/reject, counts as used immediately.
+  // - Normal permissions: Admin must Approve or Reject. Counts as used ONLY when status is "APPROVED" / "Approved".
+  //   Pending requests do NOT reduce the count.
+  const permissionUsage = useMemo(() => {
+    const totalAllowed =
+      permissionConfig?.allowedFreeCount ??
+      (probationInfo?.inProbation
+        ? permissionConfig?.probationFreeCount
+        : permissionConfig?.permanentFreeCount) ??
+      2;
+
+    if (activeTab !== "permission") {
+      return { total: totalAllowed, used: 0, remaining: totalAllowed };
+    }
+
+    const isCountedPermission = (p) => {
+      const s = (p.status || "").toUpperCase();
+      return s === "INFORMED" || s === "APPROVED";
+    };
+
+    const parsePermDate = (p) => {
+      const dateStr = p.fromDate || p.from || p.createdAt;
+      if (!dateStr) return null;
+      const d = new Date(dateStr);
+      return isNaN(d.getTime()) ? null : d;
+    };
+
+    // If a specific month is selected (e.g. "09" for September)
+    if (selectedMonth && selectedMonth !== "All") {
+      const count = (leaveRequests || []).filter((p) => {
+        const d = parsePermDate(p);
+        if (!d) return false;
+        const year = d.getFullYear().toString();
+        const month = (d.getMonth() + 1).toString().padStart(2, "0");
+        return year === selectedYear && month === selectedMonth && isCountedPermission(p);
+      }).length;
+
+      return {
+        total: totalAllowed,
+        used: count,
+        remaining: Math.max(0, totalAllowed - count),
+      };
+    }
+
+    // When "All Months" is selected:
+    // 1. Check if the current calendar month has any used permissions:
+    const now = new Date();
+    const curYearStr = now.getFullYear().toString();
+    const curMonthStr = (now.getMonth() + 1).toString().padStart(2, "0");
+
+    const curMonthCount = (leaveRequests || []).filter((p) => {
+      const d = parsePermDate(p);
+      if (!d) return false;
+      return (
+        d.getFullYear().toString() === curYearStr &&
+        (d.getMonth() + 1).toString().padStart(2, "0") === curMonthStr &&
+        isCountedPermission(p)
+      );
+    }).length;
+
+    if (curMonthCount > 0) {
+      return {
+        total: totalAllowed,
+        used: curMonthCount,
+        remaining: Math.max(0, totalAllowed - curMonthCount),
+      };
+    }
+
+    // 2. If no permissions in current month, check all used permissions for the selected year
+    const yearUsedPerms = (leaveRequests || []).filter((p) => {
+      const d = parsePermDate(p);
+      if (!d) return false;
+      return d.getFullYear().toString() === selectedYear && isCountedPermission(p);
+    });
+
+    if (yearUsedPerms.length > 0) {
+      // Find the most recent month with permission records:
+      const monthCounts = {};
+      yearUsedPerms.forEach((p) => {
+        const d = parsePermDate(p);
+        const mKey = (d.getMonth() + 1).toString().padStart(2, "0");
+        monthCounts[mKey] = (monthCounts[mKey] || 0) + 1;
+      });
+      const sortedMonths = Object.keys(monthCounts).sort().reverse();
+      const latestMonth = sortedMonths[0];
+      const count = monthCounts[latestMonth] || 0;
+      return {
+        total: totalAllowed,
+        used: count,
+        remaining: Math.max(0, totalAllowed - count),
+      };
+    }
+
+    // Fallback to permissionConfig if available
+    const fallbackUsed = permissionConfig?.currentMonthCount ?? 0;
+    return {
+      total: totalAllowed,
+      used: fallbackUsed,
+      remaining: Math.max(0, totalAllowed - fallbackUsed),
+    };
+  }, [activeTab, leaveRequests, selectedMonth, selectedYear, permissionConfig, probationInfo]);
+
   const getLeaveTypeDisplay = (item) => {
     if (item.requestType === "permission") {
       const pType = item.permissionType || item.reasonType;
@@ -1084,7 +1153,6 @@ const EmployeeRequestLeave = () => {
       <Sidebar />
       <div className="employeeLeaveRequest-wrapper">
         <div className="employeeLeaveRequest-container container-fluid">
-          {showUnsavedModal && <UnsavedChangesModal />}
 
           {/* ── Balance Cards Panel (Separate Container) ────────────────── */}
           {activeTab === "leave" && (
@@ -1150,10 +1218,10 @@ const EmployeeRequestLeave = () => {
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: "260px" }}>
                   <div>
                     <div style={{ fontSize: "14.5px", fontWeight: "500", color: "#3A466D" }}>
-                      Monthly avilable Permission: {permissionConfig.allowedFreeCount ?? (probationInfo.inProbation ? permissionConfig.probationFreeCount : permissionConfig.permanentFreeCount)} Free Permissions
+                      Monthly avilable Permission: {permissionUsage.total} Free Permissions
                     </div>
                     <div style={{ fontSize: "12px", color: "#868585", marginTop: "3px", lineHeight: "1.4" }}>
-                      Employment Status: {probationInfo.inProbation ? "Probationary Employee" : "Permanent Employee"} From the {(permissionConfig.allowedFreeCount || 2) + 1}th permission onwards, each excess permission converts to {permissionConfig.leaveDaysPerPermission || 0.5} day of leave deducted from {permissionConfig.deductCategoryName || "Annual Leave"}.
+                      Employment Status: {probationInfo.inProbation ? "Probationary Employee" : "Permanent Employee"} From the {permissionUsage.total + 1}th permission onwards, each excess permission converts to {permissionConfig.leaveDaysPerPermission || 0.5} day of leave deducted from {permissionConfig.deductCategoryName || "Annual Leave"}.
                     </div>
                   </div>
                 </div>
@@ -1168,7 +1236,7 @@ const EmployeeRequestLeave = () => {
                     fontWeight: "500",
                     color: "#334155"
                   }}>
-                    Total Permission: <span style={{ color: "#4f46e5", fontWeight: "700" }}>{permissionConfig.allowedFreeCount ?? (probationInfo.inProbation ? permissionConfig.probationFreeCount : permissionConfig.permanentFreeCount) ?? 2}</span>
+                    Total Permission: <span style={{ color: "#4f46e5", fontWeight: "700" }}>{permissionUsage.total}</span>
                   </div>
 
                   <div style={{
@@ -1180,19 +1248,19 @@ const EmployeeRequestLeave = () => {
                     fontWeight: "500",
                     color: "#334155"
                   }}>
-                    Used: <span style={{ color: "#d97706", fontWeight: "700" }}>{permissionConfig.currentMonthCount ?? 0}</span>
+                    Used: <span style={{ color: "#d97706", fontWeight: "700" }}>{permissionUsage.used}</span>
                   </div>
 
                   <div style={{
-                    background: (permissionConfig.currentMonthRemaining ?? 0) === 0 ? "#fef2f2" : "#f0fdf4",
+                    background: permissionUsage.remaining === 0 ? "#fef2f2" : "#f0fdf4",
                     padding: "6px 14px",
                     borderRadius: "8px",
-                    border: `1px solid ${(permissionConfig.currentMonthRemaining ?? 0) === 0 ? "#fca5a5" : "#86efac"}`,
+                    border: `1px solid ${permissionUsage.remaining === 0 ? "#fca5a5" : "#86efac"}`,
                     fontSize: "12.5px",
                     fontWeight: "600",
-                    color: (permissionConfig.currentMonthRemaining ?? 0) === 0 ? "#dc2626" : "#16a34a"
+                    color: permissionUsage.remaining === 0 ? "#dc2626" : "#16a34a"
                   }}>
-                    Remaining: <span style={{ fontWeight: "500" }}>{permissionConfig.currentMonthRemaining ?? 0}</span>
+                    Remaining: <span style={{ fontWeight: "500" }}>{permissionUsage.remaining}</span>
                   </div>
                 </div>
               </div>
@@ -1224,7 +1292,7 @@ const EmployeeRequestLeave = () => {
 
                 <form onSubmit={handleSubmit} id="leaveRequestForm">
                   {/* Intimation warning banner when employee has reached or exceeded their free quota */}
-                  {activeTab === "permission" && permissionConfig && (permissionConfig.currentMonthCount || 0) >= (permissionConfig.allowedFreeCount || 2) && (
+                  {activeTab === "permission" && permissionConfig && permissionUsage.used >= permissionUsage.total && (
                     <div style={{
                       background: "#fffbeb",
                       border: "1px solid #fde68a",
@@ -1242,7 +1310,7 @@ const EmployeeRequestLeave = () => {
                           Monthly Free Permission Limit Reached
                         </div>
                         <div>
-                          Free limit ({permissionConfig.allowedFreeCount || 2}) exceeded. This request is allowed and will deduct <strong>{permissionConfig.leaveDaysPerPermission || 0.5} day leave</strong> from <strong>{permissionConfig.deductCategoryName || "Annual Leave"}</strong> upon approval.
+                          Free limit ({permissionUsage.total}) exceeded. This request is allowed and will deduct <strong>{permissionConfig.leaveDaysPerPermission || 0.5} day leave</strong> from <strong>{permissionConfig.deductCategoryName || "Annual Leave"}</strong> upon approval.
                         </div>
                       </div>
                     </div>
@@ -1636,8 +1704,7 @@ const EmployeeRequestLeave = () => {
                       setFormData(initialFormState);
                       setOriginalFormData(initialFormState);
                       setShowForm(true);
-                      setHasUnsavedChanges(false);
-                    }}
+                                    }}
                   >
                     Create Request
                   </button>
@@ -1786,6 +1853,61 @@ const EmployeeRequestLeave = () => {
               maxPagesInGroup={5}
             />
           </div>
+
+          {/* ── COMBINED PERMISSION + HALF-DAY INTIMATION MODAL ── */}
+          {combinedIntimationModal && (
+            <Modal
+              show={true}
+              onHide={() => setCombinedIntimationModal(null)}
+              centered
+              backdrop="static"
+            >
+              <Modal.Header closeButton className="border-0 pb-0">
+                <Modal.Title style={{ fontSize: "16px", fontWeight: "600", color: "#1f2937" }}>
+                  Permission Limit Notice (2-Hour Policy)
+                </Modal.Title>
+              </Modal.Header>
+              <Modal.Body className="pt-2">
+                <div style={{ background: "#fffbeb", border: "1px solid #fef3c7", padding: "14px", borderRadius: "8px", marginBottom: "16px" }}>
+                  <p style={{ fontSize: "14px", color: "#92400e", marginBottom: "8px", fontWeight: "500" }}>
+                    Your requested duration is <strong>{combinedIntimationModal.durationText}</strong>. A maximum of 2 hours will be considered Permission. Any additional absence will be treated as Half-Day Leave.
+                  </p>
+                  <p style={{ fontSize: "12px", color: "#b45309", margin: 0 }}>
+                    Permission is allowed for a maximum of 2 hours only. If you require more than 2 hours, please apply for Half-Day Leave instead of Permission.
+                  </p>
+                </div>
+                <p style={{ fontSize: "13px", color: "#4b5563", marginBottom: 0 }}>
+                  Would you like to submit this as a combined Permission + Half-Day Leave request for Admin approval, or switch to a Half-Day Leave application?
+                </p>
+              </Modal.Body>
+              <Modal.Footer className="border-0 pt-0 d-flex justify-content-end gap-2">
+                <button
+                  type="button"
+                  className="common-modal-btn btn-cancel"
+                  onClick={() => setCombinedIntimationModal(null)}
+                  style={{ padding: "6px 14px", fontSize: "13px" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="common-modal-btn btn-update"
+                  onClick={handleSwitchToHalfDay}
+                  style={{ padding: "6px 14px", fontSize: "13px" }}
+                >
+                  Apply Half-Day Leave
+                </button>
+                <button
+                  type="button"
+                  className="common-modal-btn btn-confirm-success"
+                  onClick={handleConfirmCombined}
+                  style={{ padding: "6px 16px", fontSize: "13px" }}
+                >
+                  Submit Combined Request
+                </button>
+              </Modal.Footer>
+            </Modal>
+          )}
 
           {showLeaveModal && selectedLeave && (
             <EmployeeLeaveRequestModal

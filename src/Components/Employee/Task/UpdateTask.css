@@ -378,14 +378,34 @@
 }
 
 
+.admin-task-details-update-container .form-row,
+.admin-task-details-update-form .form-row,
 .form-row {
   display: flex;
   gap: 15px;
+  align-items: stretch !important;
+  width: 100%;
 }
 
+.admin-task-details-update-container .form-row>*,
+.admin-task-details-update-form .form-row>*,
 .form-row>* {
   flex: 1;
   min-width: 0;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  width: 100%;
+}
+
+.field-label-text {
+  font-size: 12px;
+  color: #868585;
+  line-height: 100%;
 }
 
 .assign-select-wrapper {
@@ -1159,18 +1179,69 @@
   }
 
   .admin-task-details-update-body {
-    flex-direction: column;
+    flex-direction: column !important;
     height: auto;
     overflow: visible;
   }
 
   .admin-task-details-update-members-panel {
-    width: 100%;
-    border-right: none;
-    border-bottom: 1px solid #f0f0f0;
+    width: 100% !important;
+    min-width: unset !important;
+    border-right: none !important;
+    border-bottom: 1px solid #f0f0f0 !important;
+    max-height: 180px !important;
+    overflow-y: auto !important;
   }
 
-  /* .admin-task-details-update-page { width: 95%; height: 90vh; } */
+  .admin-task-details-update-form {
+    width: 100% !important;
+    padding: 14px 12px !important;
+  }
+
+  .admin-task-details-update-container .form-row,
+  .admin-task-details-update-form .form-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    width: 100% !important;
+    margin-bottom: 12px !important;
+  }
+
+  .admin-task-details-update-container .form-row > *,
+  .admin-task-details-update-form .form-row > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: none !important;
+  }
+
+  .update-task-spacer-col,
+  .admin-task-details-update-form .form-row > .form-group:empty {
+    display: none !important;
+  }
+
+  .admin-task-details-update-container .date-inputsbut,
+  .admin-task-details-update-form .date-inputsbut {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .admin-task-details-update-container .date-inputsbut input,
+  .admin-task-details-update-form .date-inputsbut input {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .admin-task-details-update-container .custom-dropdown-container,
+  .admin-task-details-update-form .custom-dropdown-container,
+  .admin-task-details-update-container .custom-dropdown-trigger,
+  .admin-task-details-update-form .custom-dropdown-trigger,
+  .admin-task-details-update-container .locked-dropdown,
+  .admin-task-details-update-form .locked-dropdown {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
 }
 
 /* Hide default browser calendar icon */
@@ -1204,6 +1275,7 @@ input.custom-date.field-disabled {
   font-size: 12px !important;
   color: #374151 !important;
   box-sizing: border-box !important;
+  width: 100% !important;
 }
 
 .admin-task-details-update-container .custom-dropdown-trigger span {
@@ -1241,21 +1313,41 @@ input.custom-date.field-disabled {
 }
 
 /* Avoid double scrollbars by disabling scroll on the outer modal wrapper and letting flex layout handle height */
-.employee-task-details-popup-container {
+.employee-task-details-popup-container,
+.employee-task-detailsequal-popup-container,
+.employee-task-details-popup-container--wide {
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
+  max-height: 90vh !important;
 }
 
 .admin-task-details-update-container {
-  overflow-x: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  padding: 16px 20px !important;
+}
+
+.admin-task-details-update-header {
+  flex-shrink: 0 !important;
+  padding-bottom: 12px !important;
 }
 
 .admin-task-details-update-body {
-  overflow-x: hidden !important;
+  display: flex !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
 }
 
 .admin-task-details-update-form {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
   overflow-x: hidden !important;
 }
 
@@ -1468,32 +1560,72 @@ input.custom-date.field-disabled {
   }
 
   /* ── Stack columns vertically on mobile ── */
+  .admin-task-details-update-container .form-row,
+  .admin-task-details-update-form .form-row,
   .form-row {
     display: flex !important;
     flex-direction: column !important;
+    align-items: stretch !important;
     gap: 10px !important;
+    width: 100% !important;
   }
 
+  .admin-task-details-update-container .form-row>*,
+  .admin-task-details-update-form .form-row>*,
   .form-row>* {
     width: 100% !important;
+    max-width: 100% !important;
     flex: none !important;
   }
 
+  .update-task-spacer-col,
+  .admin-task-details-update-form .form-row > .form-group:empty {
+    display: none !important;
+  }
+
+  .admin-task-details-update-container .date-inputsbut,
+  .admin-task-details-update-form .date-inputsbut,
   .date-inputsbut {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .admin-task-details-update-container .date-inputsbut input,
+  .admin-task-details-update-form .date-inputsbut input,
+  .date-inputsbut input {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .admin-task-details-update-container .custom-dropdown-container,
+  .admin-task-details-update-form .custom-dropdown-container,
+  .admin-task-details-update-container .custom-dropdown-trigger,
+  .admin-task-details-update-form .custom-dropdown-trigger,
+  .admin-task-details-update-container .locked-dropdown,
+  .admin-task-details-update-form .locked-dropdown {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .admin-task-details-update-form-actions {
+    flex-direction: column-reverse !important;
+    gap: 10px !important;
     width: 100% !important;
   }
 
-  .date-inputsbut input {
+  .admin-task-details-update-form-actions button {
     width: 100% !important;
   }
 
   /* ── Expand container constraints to fit height on mobile ── */
   .employee-task-details-popup-container,
-  .employee-task-detailsequal-popup-container {
+  .employee-task-detailsequal-popup-container,
+  .employee-task-details-popup-container--wide {
     width: 95% !important;
     max-width: 95% !important;
-    max-height: 90vh !important;
+    max-height: 92vh !important;
     margin: 10px auto !important;
-    overflow-y: auto !important;
+    overflow: hidden !important;
   }
 }

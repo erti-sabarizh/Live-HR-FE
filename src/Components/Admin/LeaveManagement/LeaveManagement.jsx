@@ -9,6 +9,7 @@ import "../../Employee/EmployeeAttendance/AttendancePage.css";
 import CustomDropdown from "../../Common/CustomDropdown";
 import ApprovalBanner from "../../Common/ApprovalBanner";
 import { Icon } from "@iconify/react";
+import { useUser } from "../../UserContext";
 import "../../Todolist/Todolist.css";
 import "./Leavemanagement.css";
 
@@ -45,9 +46,80 @@ const LeaveManagement = () => {
   const [prevYearHasData, setPrevYearHasData] = useState(false);
   const categoryCacheRef = useRef({});
 
+  const { user } = useUser() || {};
   const storedUser = JSON.parse(sessionStorage.getItem("Erti-Portal") || "{}");
-  const isHrUser = storedUser?.role === "employee" && storedUser?.isHr;
-  const isAdminUser = storedUser?.role === "admin";
+  const isHrUser = (user?.role || storedUser?.role) === "employee" || Boolean(user?.isHr ?? storedUser?.isHr);
+  const isAdminUser = (user?.role || storedUser?.role) === "admin";
+
+  const [userPermissions, setUserPermissions] = useState(() => {
+    return user?.permissions || storedUser?.permissions || [];
+  });
+
+  useEffect(() => {
+    const fetchLatestPermissions = async () => {
+      try {
+        const res = await portalInstance.get("/profile/get-profile");
+        if (res.data?.data?.permissions) {
+          setUserPermissions(res.data.data.permissions);
+          const updated = {
+            ...storedUser,
+            ...res.data.data,
+            permissions: res.data.data.permissions,
+          };
+          sessionStorage.setItem("Erti-Portal", JSON.stringify(updated));
+        }
+      } catch (e) {
+        console.error("Failed to fetch user permissions in LeaveManagement:", e);
+      }
+    };
+    fetchLatestPermissions();
+  }, []);
+
+  const canWrite = React.useMemo(() => {
+    const activeRole = user?.role || storedUser?.role;
+    if (activeRole === "admin") return true;
+
+    const perms = userPermissions && userPermissions.length > 0
+      ? userPermissions
+      : (user?.permissions || storedUser?.permissions || []);
+
+    const clean = (str) =>
+      (str || "")
+        .toLowerCase()
+        .replace(/&/g, "and")
+        .replace(/leaves/g, "leave")
+        .replace(/\s+/g, "")
+        .replace(/-/g, "")
+        .replace(/_/g, "");
+
+    const targetMod = clean("Leaves & Holidays");
+    const targetSub = clean("Manage Leaves");
+
+    const matched = perms.find((p) => {
+      const pMod = clean(p.module);
+      if (pMod !== targetMod && !pMod.includes("leave")) return false;
+      if (!p.subMenu) return true;
+      const pSub = clean(p.subMenu);
+      return (
+        pSub === targetSub ||
+        pSub === "manageleave" ||
+        pSub === "manageleaves" ||
+        pSub === "leavemanagement"
+      );
+    });
+
+    if (matched) {
+      const p = (matched.permission || "").toUpperCase();
+      return p === "WRITE" || p === "BOTH" || p === "FULL_ACCESS";
+    }
+
+    const isHr = Boolean(user?.isHr ?? storedUser?.isHr);
+    if (isHr) {
+      return true;
+    }
+
+    return false;
+  }, [user, storedUser, userPermissions]);
 
   const getPreviousFinancialYear = (yearStr) => {
     if (!yearStr || !yearStr.includes("-")) return "";
@@ -693,6 +765,10 @@ const LeaveManagement = () => {
   };
 
   const handleAddClick = () => {
+    if (!canWrite) {
+      toast.warning("You have Read-only access to Leave Management.");
+      return;
+    }
     setIsEdit(false);
     setCurrentId(null);
     setCategoryItems([createDefaultCategoryItem()]);
@@ -700,6 +776,10 @@ const LeaveManagement = () => {
   };
 
   const handleEditClick = (cat) => {
+    if (!canWrite) {
+      toast.warning("You have Read-only access to Leave Management.");
+      return;
+    }
     setIsEdit(true);
     setCurrentId(cat._id);
     setCategoryItems([convertCategoryToItem(cat)]);
@@ -707,14 +787,22 @@ const LeaveManagement = () => {
   };
 
   const handleDeleteClick = (id) => {
+    if (!canWrite) {
+      toast.warning("You have Read-only access to Leave Management.");
+      return;
+    }
     setCatToDeleteId(id);
     setShowDeleteModal(true);
   };
 
   const confirmDelete = async () => {
+    if (!canWrite) {
+      toast.error("You do not have write permission to delete leave categories.");
+      return;
+    }
     if (!catToDeleteId) return;
     const stored = JSON.parse(sessionStorage.getItem("Erti-Portal") || "{}");
-    const isHrUser = stored?.role === "employee" && stored?.isHr;
+    const isHrUser = stored?.role === "employee" || Boolean(stored?.isHr);
     try {
       if (String(catToDeleteId).startsWith("pending_")) {
         const targetCat = categories.find((c) => c._id === catToDeleteId);
@@ -757,9 +845,13 @@ const LeaveManagement = () => {
   };
 
   const confirmBulkDelete = async () => {
+    if (!canWrite) {
+      toast.error("You do not have write permission to delete leave categories.");
+      return;
+    }
     if (selectedCategoryIds.length === 0) return;
     const stored = JSON.parse(sessionStorage.getItem("Erti-Portal") || "{}");
-    const isHrUser = stored?.role === "employee" && stored?.isHr;
+    const isHrUser = stored?.role === "employee" || Boolean(stored?.isHr);
 
     try {
       if (isHrUser) {
@@ -791,9 +883,13 @@ const LeaveManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!canWrite) {
+      toast.error("You do not have write permission to modify leave categories.");
+      return;
+    }
 
     const stored = JSON.parse(sessionStorage.getItem("Erti-Portal") || "{}");
-    const isHrUser = stored?.role === "employee" && stored?.isHr;
+    const isHrUser = stored?.role === "employee" || Boolean(stored?.isHr);
 
     // Validate all categories
     const validatedCategories = [];
@@ -1113,7 +1209,7 @@ const LeaveManagement = () => {
           )}
 
           {/* ── Banner for Empty / New Financial Year: Use Previous Year Data or Edit & Upload New Data ── */}
-          {!loading && categories.length === 0 && (
+          {!loading && categories.length === 0 && canWrite && (
             <div className="lm-reminder-banner" style={{ marginTop: "12px", marginBottom: "16px" }}>
               <div className="lm-reminder-banner-text">
                 <h6>Configure Leave Categories for FY {selectedYear}</h6>
@@ -1152,7 +1248,7 @@ const LeaveManagement = () => {
           <div className="adminLeaveRequest-panel lm-table-panel">
             {/* Page Header Row */}
             <div className="lm-header-row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-              {selectedCategoryIds.length > 0 ? (
+              {canWrite && selectedCategoryIds.length > 0 ? (
                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                   <span style={{ fontSize: "14px", fontWeight: "600", color: "#6366f1", backgroundColor: "#e0e7ff", padding: "6px 12px", borderRadius: "6px" }}>
                     {selectedCategoryIds.length} Selected
@@ -1223,12 +1319,14 @@ const LeaveManagement = () => {
                   </div>
                 )}
 
-                <button
-                  className="admin-leave-btn admin-btn-approve lm-add-btn"
-                  onClick={handleAddClick}
-                >
-                  + Add Category
-                </button>
+                {canWrite && (
+                  <button
+                    className="admin-leave-btn admin-btn-approve lm-add-btn"
+                    onClick={handleAddClick}
+                  >
+                    + Add Category
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1236,20 +1334,22 @@ const LeaveManagement = () => {
               <div className="table-responsive">
                 <div className="commonTableLayout adminLeaveRequest-table lm-table-grid">
 
-                  <div className="adminLeaveRequest-tableHeader lm-table-cols">
-                    <div className="adminLeaveRequest-headerCell" style={{ justifyContent: "center" }}>
-                      <input
-                        type="checkbox"
-                        style={{ cursor: "pointer", width: "16px", height: "16px" }}
-                        checked={selectedCategoryIds.length === categories.length && categories.length > 0}
-                        onChange={handleSelectAll}
-                      />
-                    </div>
+                  <div className={`adminLeaveRequest-tableHeader lm-table-cols ${!canWrite ? "lm-table-cols--readonly" : ""}`}>
+                    {canWrite && (
+                      <div className="adminLeaveRequest-headerCell" style={{ justifyContent: "center" }}>
+                        <input
+                          type="checkbox"
+                          style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                          checked={selectedCategoryIds.length === categories.length && categories.length > 0}
+                          onChange={handleSelectAll}
+                        />
+                      </div>
+                    )}
                     <div className="adminLeaveRequest-headerCell">S.No</div>
                     <div className="adminLeaveRequest-headerCell">Name</div>
                     <div className="adminLeaveRequest-headerCell">Leave Count</div>
                     <div className="adminLeaveRequest-headerCell">Configured Rules (Type & Duration)</div>
-                    <div className="adminLeaveRequest-headerCell">Actions</div>
+                    <div className="adminLeaveRequest-headerCell">{canWrite ? "Actions" : "Status"}</div>
                   </div>
 
                   <div className="adminLeaveRequest-tableBody">
@@ -1286,17 +1386,19 @@ const LeaveManagement = () => {
                     ) : (
                       categories.map((cat, idx) => (
                         <div
-                          className="adminLeaveRequest-tableRow lm-table-cols"
+                          className={`adminLeaveRequest-tableRow lm-table-cols ${!canWrite ? "lm-table-cols--readonly" : ""}`}
                           key={cat._id}
                         >
-                          <div className="adminLeaveRequest-tableCell" style={{ justifyContent: "center" }}>
-                            <input
-                              type="checkbox"
-                              style={{ cursor: "pointer", width: "16px", height: "16px" }}
-                              checked={selectedCategoryIds.includes(cat._id)}
-                              onChange={() => handleToggleSelectRow(cat._id)}
-                            />
-                          </div>
+                          {canWrite && (
+                            <div className="adminLeaveRequest-tableCell" style={{ justifyContent: "center" }}>
+                              <input
+                                type="checkbox"
+                                style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                                checked={selectedCategoryIds.includes(cat._id)}
+                                onChange={() => handleToggleSelectRow(cat._id)}
+                              />
+                            </div>
+                          )}
                           <div className="adminLeaveRequest-tableCell">{idx + 1}</div>
                           <div className="adminLeaveRequest-tableCell" style={{ fontWeight: "600", color: "#1e293b" }}>{cat.name}</div>
                           <div className="adminLeaveRequest-tableCell">
@@ -1421,20 +1523,24 @@ const LeaveManagement = () => {
                                     Pending Approval
                                   </span>
                                 )}
-                                <button
-                                  className="lm-action-btn lm-action-btn--edit"
-                                  onClick={() => handleEditClick(cat)}
-                                  title="Edit"
-                                >
-                                  <Icon icon="lucide:edit" width="18" height="18" />
-                                </button>
-                                <button
-                                  className="lm-action-btn lm-action-btn--delete"
-                                  onClick={() => handleDeleteClick(cat._id)}
-                                  title="Delete"
-                                >
-                                  <Icon icon="lucide:trash-2" width="18" height="18" />
-                                </button>
+                                {canWrite && (
+                                  <>
+                                    <button
+                                      className="lm-action-btn lm-action-btn--edit"
+                                      onClick={() => handleEditClick(cat)}
+                                      title="Edit"
+                                    >
+                                      <Icon icon="lucide:edit" width="18" height="18" />
+                                    </button>
+                                    <button
+                                      className="lm-action-btn lm-action-btn--delete"
+                                      onClick={() => handleDeleteClick(cat._id)}
+                                      title="Delete"
+                                    >
+                                      <Icon icon="lucide:trash-2" width="18" height="18" />
+                                    </button>
+                                  </>
+                                )}
                               </>
                             ) : (
                               <>
@@ -1447,20 +1553,24 @@ const LeaveManagement = () => {
                                     Approved
                                   </span>
                                 )}
-                                <button
-                                  className="lm-action-btn lm-action-btn--edit"
-                                  onClick={() => handleEditClick(cat)}
-                                  title="Edit"
-                                >
-                                  <Icon icon="lucide:edit" width="18" height="18" />
-                                </button>
-                                <button
-                                  className="lm-action-btn lm-action-btn--delete"
-                                  onClick={() => handleDeleteClick(cat._id)}
-                                  title="Delete"
-                                >
-                                  <Icon icon="lucide:trash-2" width="18" height="18" />
-                                </button>
+                                {canWrite && (
+                                  <>
+                                    <button
+                                      className="lm-action-btn lm-action-btn--edit"
+                                      onClick={() => handleEditClick(cat)}
+                                      title="Edit"
+                                    >
+                                      <Icon icon="lucide:edit" width="18" height="18" />
+                                    </button>
+                                    <button
+                                      className="lm-action-btn lm-action-btn--delete"
+                                      onClick={() => handleDeleteClick(cat._id)}
+                                      title="Delete"
+                                    >
+                                      <Icon icon="lucide:trash-2" width="18" height="18" />
+                                    </button>
+                                  </>
+                                )}
                               </>
                             )}
                           </div>

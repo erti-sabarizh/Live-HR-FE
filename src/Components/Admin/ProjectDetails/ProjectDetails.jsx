@@ -158,34 +158,72 @@ const calculateWorkingDaysFromHistory = (history, currentStatus, holidaysList = 
 const groupTasksWithHistory = (items, holidaysList = [], leavesByEmp = {}) => {
   if (!Array.isArray(items) || items.length === 0) return [];
 
-  const groups = new Map();
-
-  items.forEach((item) => {
-    const rawTitle = (item.taskTitle || item.displayTitle || item.name || item.title || item.phase || "").trim();
-    const titleKey = rawTitle.toLowerCase();
-    const refKey = item.referenceId ? String(item.referenceId) : null;
-    const taskIdKey = (item.task_id && item.task_id !== "standalone")
-      ? String(item.task_id)
-      : (item.task?._id ? String(item.task._id) : null);
-
-    let groupKey = titleKey;
-    if (!groupKey && refKey) groupKey = `ref_${refKey}`;
-    if (!groupKey && taskIdKey) groupKey = `task_${taskIdKey}`;
-    if (!groupKey) groupKey = `item_${item._id || Math.random()}`;
-
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, []);
+  // Connected Components / Union-Find to group related updates across days
+  const n = items.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (i) => {
+    let root = i;
+    while (root !== parent[root]) root = parent[root];
+    let curr = i;
+    while (curr !== root) {
+      let nxt = parent[curr];
+      parent[curr] = root;
+      curr = nxt;
     }
-    groups.get(groupKey).push(item);
-  });
+    return root;
+  };
+  const union = (i, j) => {
+    const rootI = find(i);
+    const rootJ = find(j);
+    if (rootI !== rootJ) parent[rootI] = rootJ;
+  };
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = items[i];
+      const b = items[j];
+
+      const aId = a._id ? String(a._id) : null;
+      const bId = b._id ? String(b._id) : null;
+      const aWorkRef = a.workUpdateRefId ? String(a.workUpdateRefId) : null;
+      const bWorkRef = b.workUpdateRefId ? String(b.workUpdateRefId) : null;
+      const aRef = a.referenceId ? String(a.referenceId) : null;
+      const bRef = b.referenceId ? String(b.referenceId) : null;
+      const aTaskId = (a.task_id && a.task_id !== "standalone") ? String(a.task_id) : (a.task?._id ? String(a.task._id) : null);
+      const bTaskId = (b.task_id && b.task_id !== "standalone") ? String(b.task_id) : (b.task?._id ? String(b.task._id) : null);
+      const aTitle = (a.taskTitle || a.displayTitle || a.name || a.title || a.phase || "").trim().toLowerCase();
+      const bTitle = (b.taskTitle || b.displayTitle || b.name || b.title || b.phase || "").trim().toLowerCase();
+
+      let connected = false;
+      // 1. workUpdateRefId links across days
+      if (aWorkRef && bId && aWorkRef === bId) connected = true;
+      else if (bWorkRef && aId && bWorkRef === aId) connected = true;
+      else if (aWorkRef && bWorkRef && aWorkRef === bWorkRef) connected = true;
+      // 2. Phase reference IDs
+      else if (aRef && bRef && aRef === bRef) connected = true;
+      // 3. Same formal task phase
+      else if (aTaskId && bTaskId && aTaskId === bTaskId && ((aRef && bRef && aRef === bRef) || (!aRef && !bRef))) connected = true;
+      // 4. Same title within standalone updates
+      else if (aTitle && bTitle && aTitle === bTitle && (!aTaskId || aTaskId === "standalone") && (!bTaskId || bTaskId === "standalone")) connected = true;
+
+      if (connected) union(i, j);
+    }
+  }
+
+  const clusters = new Map();
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(items[i]);
+  }
 
   const grouped = [];
-
-  groups.forEach((groupItems) => {
+  clusters.forEach((groupItems) => {
     const sorted = [...groupItems].sort((a, b) => {
       const dateA = new Date(a.date || a.completionDate || a.updateDate || a.createdAt || 0).getTime();
       const dateB = new Date(b.date || b.completionDate || b.updateDate || b.createdAt || 0).getTime();
-      return dateB - dateA;
+      if (dateA !== dateB) return dateB - dateA;
+      return String(b._id || "").localeCompare(String(a._id || ""));
     });
 
     const latest = sorted[0];
@@ -195,13 +233,19 @@ const groupTasksWithHistory = (items, holidaysList = [], leavesByEmp = {}) => {
     const empLeaves = (leavesByEmp && leavesByEmp[String(empId)]) || [];
     const calculatedDays = calculateWorkingDaysFromHistory(sorted, latestStatus, holidaysList, empLeaves);
 
+    const effectiveWorkingDays = (latest.workingDays !== undefined && latest.workingDays !== null && Number(latest.workingDays) > 0)
+      ? Number(latest.workingDays)
+      : (latest.phaseWorkingDays !== undefined && latest.phaseWorkingDays !== null && Number(latest.phaseWorkingDays) > 0)
+        ? Number(latest.phaseWorkingDays)
+        : (calculatedDays || 1);
+
     grouped.push({
       ...latest,
       taskTitle: latest.taskTitle || latest.displayTitle || latest.name || latest.title || "Untitled Task",
       displayTitle: latest.taskTitle || latest.displayTitle || latest.name || latest.title || "Untitled Task",
       latestDate: latest.date || latest.completionDate || latest.updateDate || latest.createdAt,
       latestStatus: latestStatus,
-      workingDays: calculatedDays,
+      workingDays: effectiveWorkingDays,
       isCompleted: normKey === "completed",
       isInProcess: normKey === "inprocess",
       history: sorted,
@@ -215,6 +259,41 @@ const groupTasksWithHistory = (items, holidaysList = [], leavesByEmp = {}) => {
   });
 
   return grouped;
+};
+
+const getLocalDateString = (val) => {
+  if (!val) return null;
+  if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
+    return val.trim();
+  }
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return null;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const calculateDistinctWorkingDays = (items) => {
+  if (!Array.isArray(items) || items.length === 0) return 0;
+  const distinctDates = new Set();
+  items.forEach((item) => {
+    const records = (Array.isArray(item?.history) && item.history.length > 0)
+      ? item.history
+      : (item ? [item] : []);
+    records.forEach((h) => {
+      const rawStatus = (h?.status || h?.phaseStatus || item?.latestStatus || item?.status || "").toLowerCase().replace(/[-_\s]/g, "");
+      if (rawStatus !== "hold" && rawStatus !== "onhold") {
+        const dVal = h?.completionDate || h?.date || h?.updateDate || h?.createdAt || item?.latestDate || item?.completionDate || item?.date;
+        const key = getLocalDateString(dVal);
+        if (key) {
+          distinctDates.add(key);
+        }
+      }
+    });
+  });
+
+  return distinctDates.size;
 };
 
 const ProjectDetails = () => {
@@ -291,7 +370,22 @@ const ProjectDetails = () => {
       setLoading(true);
       const res = await portalInstance.get("/creat/task-meta");
       if (res.data?.success && res.data?.data?.fullProjects) {
-        setProjectList(res.data.data.fullProjects || []);
+        const rawProjects = res.data.data.fullProjects || [];
+        const dedupedMap = new Map();
+        rawProjects.forEach((p) => {
+          const catName = (p.categoryId?.name || "").trim().toLowerCase();
+          const projName = (p.name || "").trim().toLowerCase();
+          const key = `${catName}___${projName}`;
+          if (!dedupedMap.has(key)) {
+            dedupedMap.set(key, p);
+          } else {
+            const existing = dedupedMap.get(key);
+            if (p.name && /[A-Z]/.test(p.name) && !/[A-Z]/.test(existing.name)) {
+              existing.name = p.name;
+            }
+          }
+        });
+        setProjectList(Array.from(dedupedMap.values()));
       }
     } catch (err) {
       console.error("❌ Failed to fetch project list:", err);
@@ -848,8 +942,8 @@ const ProjectDetails = () => {
               emp.completedTasksCount = emp.completedTasks.length;
               emp.inProcessTasks = grouped.filter((t) => t.isInProcess);
               emp.inProcessTasksCount = emp.inProcessTasks.length;
-              emp.totalWorkingDays = grouped.reduce((sum, t) => sum + (t.workingDays || 0), 0);
-              emp.inProcessDays = grouped.reduce((sum, t) => sum + (t.isInProcess ? (t.workingDays || 0) : 0), 0);
+              emp.totalWorkingDays = calculateDistinctWorkingDays(emp.updates || grouped);
+              emp.inProcessDays = calculateDistinctWorkingDays(emp.inProcessTasks);
             });
 
             const empList = Object.values(empMap);
@@ -872,8 +966,8 @@ const ProjectDetails = () => {
                 completedTasksCount: allGrouped.filter((t) => t.isCompleted).length,
                 inProcessTasks: allGrouped.filter((t) => t.isInProcess),
                 inProcessTasksCount: allGrouped.filter((t) => t.isInProcess).length,
-                totalWorkingDays: allGrouped.reduce((sum, t) => sum + (t.workingDays || 0), 0),
-                inProcessDays: allGrouped.reduce((sum, t) => sum + (t.isInProcess ? (t.workingDays || 0) : 0), 0),
+                totalWorkingDays: calculateDistinctWorkingDays(projectUpdates || allGrouped),
+                inProcessDays: calculateDistinctWorkingDays(allGrouped.filter((t) => t.isInProcess)),
               });
             }
 
@@ -886,7 +980,7 @@ const ProjectDetails = () => {
                     groupedTasks: groupTasksWithHistory(projectUpdates, projectHolidays, projectLeaves),
                     completedTasksCount: 0,
                     inProcessTasksCount: 0,
-                    totalWorkingDays: 0,
+                    totalWorkingDays: calculateDistinctWorkingDays(projectUpdates),
                     inProcessDays: 0,
                   }
                 : empMap[activeEmpId];
@@ -1371,6 +1465,16 @@ const ProjectDetails = () => {
                                                         color: "#475569",
                                                       }}
                                                     >
+                                                      {(() => {
+                                                        const mainTitle = (u.taskTitle || u.displayTitle || u.name || u.title || "").trim();
+                                                        const hTitle = (h.title || h.taskTitle || h.displayTitle || h.name || h.phase || "").trim();
+                                                        const isTitleChanged = Boolean(hTitle && mainTitle && hTitle.toLowerCase() !== mainTitle.toLowerCase());
+                                                        return isTitleChanged ? (
+                                                          <div style={{ fontWeight: "600", color: "#1e293b", marginBottom: "4px", fontSize: "12px" }}>
+                                                            {hTitle}
+                                                          </div>
+                                                        ) : null;
+                                                      })()}
                                                       <div
                                                         style={{
                                                           wordBreak: "break-word",
@@ -1694,6 +1798,16 @@ const ProjectDetails = () => {
                                           </span>
                                         </td>
                                         <td style={{ padding: "5px 8px", verticalAlign: "top", color: "#475569" }}>
+                                          {(() => {
+                                            const mainTitle = (u.taskTitle || u.displayTitle || u.name || u.title || "").trim();
+                                            const hTitle = (h.title || h.taskTitle || h.displayTitle || h.name || h.phase || "").trim();
+                                            const isTitleChanged = Boolean(hTitle && mainTitle && hTitle.toLowerCase() !== mainTitle.toLowerCase());
+                                            return isTitleChanged ? (
+                                              <div style={{ fontWeight: "600", color: "#1e293b", marginBottom: "3px", fontSize: "11px" }}>
+                                                {hTitle}
+                                              </div>
+                                            ) : null;
+                                          })()}
                                           <div>{h.note || h.description || h.details || "—"}</div>
                                           {Array.isArray(h.pages) && h.pages.length > 0 && (
                                             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "4px" }}>
@@ -1834,7 +1948,8 @@ const ProjectDetails = () => {
               <div>
                 <span className="dwu-work-card__label d-block mb-1">Task Title</span>
                 <p className="fw-medium text-dark m-0" style={{ wordBreak: "break-word" }}>
-                  {selectedUpdate.displayTitle ||
+                  {selectedUpdate.title ||
+                    selectedUpdate.displayTitle ||
                     selectedUpdate.task?.taskTitle ||
                     selectedUpdate.standaloneTitle ||
                     "—"}

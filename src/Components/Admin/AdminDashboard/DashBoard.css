@@ -45,6 +45,7 @@
     left: 10px;
     right: 10px;
     top: 68px;
+    padding: 0;
   }
 }
 
@@ -698,7 +699,8 @@
 }
 
 .project-phases-modal-custom-admin .modal-dialog {
-  max-width: 850px !important;
+  max-width: 1250px !important;
+  width: 94vw !important;
 }
 
 /* Custom Cancel Button & Footer for Employee Work Details Modal */
@@ -827,7 +829,7 @@
 /* ✅ Fix — parent AND children must be constrained */
 .project-details-two-panel {
   display: flex;
-  height: 460px;
+  height: 520px;
   overflow: hidden;
   gap: 16px;
 }
@@ -835,8 +837,6 @@
 /* Left Panel: Employee List */
 .project-details-modal-body .project-details-left-panel,
 .project-details-modal-body .project-details-right-panel {
-  flex: 1;
-  min-width: 260px;
   border: 1px solid #e5e7eb !important;
   border-radius: 12px !important;
   overflow: hidden !important;
@@ -847,7 +847,15 @@
 }
 
 .project-details-modal-body .project-details-left-panel {
-  max-width: 320px;
+  flex: 0 0 260px !important;
+  width: 260px !important;
+  max-width: 260px !important;
+  min-width: 240px !important;
+}
+
+.project-details-modal-body .project-details-right-panel {
+  flex: 1 !important;
+  min-width: 0 !important;
 }
 
 .project-details-modal-body .project-details-left-header,
@@ -1655,8 +1663,9 @@
 /* ================= TABLET & MOBILE PANEL STYLING OVERRIDES ================= */
 @media (max-width: 1024px) {
   .project-phases-modal-custom-admin .modal-dialog {
-    margin: 10px 16px !important;
-    max-width: calc(100% - 32px) !important;
+    margin: 16px auto !important;
+    max-width: min(680px, calc(100% - 32px)) !important;
+    width: 92% !important;
   }
 
   .project-phases-modal-custom-admin .common-modal-close-x {
@@ -1664,7 +1673,8 @@
   }
 
   .project-phases-modal-custom-admin .modal-content {
-    height: 80vh !important;
+    height: auto !important;
+    max-height: 90vh !important;
     display: flex !important;
     flex-direction: column !important;
   }
@@ -1693,16 +1703,22 @@
     padding-top: 4px !important;
   }
 
+  .project-phases-modal-custom-admin .project-details-two-panel,
   .project-details-two-panel {
     flex-direction: column !important;
     height: auto !important;
     max-height: 80vh !important;
     overflow: hidden !important;
+    width: 100% !important;
   }
 
+  .project-details-modal-body .project-details-left-panel,
+  .project-phases-modal-custom-admin .project-details-left-panel,
   .project-details-left-panel {
     width: 100% !important;
-    min-width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
     height: auto !important;
     background: transparent !important;
     border: none !important;
@@ -1710,6 +1726,7 @@
     margin-bottom: 0 !important;
   }
 
+  .project-details-modal-body .project-details-left-header,
   .project-details-left-header {
     display: flex !important;
     background: #f8fafc !important;
@@ -1719,23 +1736,28 @@
     font-size: 11px !important;
     font-weight: 600 !important;
     color: #475569 !important;
+    border-bottom: none !important;
+    width: 100% !important;
   }
 
+  .project-details-modal-body .project-details-left-list,
   .project-details-left-list {
     display: flex !important;
     flex-direction: column !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    max-height: 50vh !important;
+    max-height: 52vh !important;
     gap: 8px !important;
     width: 100% !important;
     scrollbar-width: thin !important;
+    padding: 0 !important;
   }
 
   .project-details-right-panel {
     display: none !important;
   }
 
+  .project-details-modal-body .project-details-emp-item,
   .project-details-emp-item {
     width: 100% !important;
     max-width: 100% !important;
@@ -1749,6 +1771,7 @@
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
     transform: none !important;
     gap: 12px !important;
+    box-sizing: border-box !important;
   }
 
   .project-details-emp-item.active {

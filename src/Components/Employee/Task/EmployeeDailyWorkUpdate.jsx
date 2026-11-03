@@ -373,18 +373,50 @@ const EmployeeDailyWorkUpdate = () => {
         // Priority 2: phaseId (if referenceId was absent)
         // Priority 3: workUpdateRefId links standalone updates across days
         // Priority 4: category + project + title for standalone updates
-        const activeWorkUpdateRefs = new Set();
+
+        // Build connected components for workUpdateRefId across all days
+        const workRefParent = new Map();
+        const getWorkRefRoot = (id) => {
+          if (!id) return null;
+          let curr = String(id);
+          while (workRefParent.has(curr) && workRefParent.get(curr) !== curr) {
+            curr = workRefParent.get(curr);
+          }
+          return curr;
+        };
+        const unionWorkRef = (id1, id2) => {
+          if (!id1 || !id2) return;
+          const s1 = String(id1);
+          const s2 = String(id2);
+          if (!workRefParent.has(s1)) workRefParent.set(s1, s1);
+          if (!workRefParent.has(s2)) workRefParent.set(s2, s2);
+          const r1 = getWorkRefRoot(s1);
+          const r2 = getWorkRefRoot(s2);
+          if (r1 !== r2) {
+            workRefParent.set(r1, r2);
+          }
+        };
+
         sorted.forEach(item => {
-          if (item.workUpdateRefId) activeWorkUpdateRefs.add(String(item.workUpdateRefId));
+          const id = item._id ? String(item._id) : null;
+          const ref = (item.workUpdateRefId && typeof item.workUpdateRefId === "object")
+            ? String(item.workUpdateRefId._id || item.workUpdateRefId)
+            : (item.workUpdateRefId ? String(item.workUpdateRefId) : null);
+          if (id && ref) {
+            unionWorkRef(id, ref);
+          }
         });
 
         const groups = new Map();
         sorted.forEach(item => {
           const rId = item.referenceId ? String(item.referenceId) : null;
           const pId = (item.phaseId || item.taskPhaseId) ? String(item.phaseId || item.taskPhaseId) : null;
-          const wRefId = item.workUpdateRefId
-            ? String(item.workUpdateRefId)
-            : (item._id && activeWorkUpdateRefs.has(String(item._id)) ? String(item._id) : null);
+          const rawWorkRef = (item.workUpdateRefId && typeof item.workUpdateRefId === "object")
+            ? String(item.workUpdateRefId._id || item.workUpdateRefId)
+            : (item.workUpdateRefId ? String(item.workUpdateRefId) : null);
+          const wRefId = rawWorkRef
+            ? getWorkRefRoot(rawWorkRef)
+            : (item._id && workRefParent.has(String(item._id)) ? getWorkRefRoot(String(item._id)) : null);
 
           let groupKey = "";
           if (rId) {
@@ -708,8 +740,9 @@ const EmployeeDailyWorkUpdate = () => {
           (editingUpdate?.task?._id && editingUpdate.task._id !== "standalone" && (editingUpdate.phaseId || editingUpdate.taskPhaseId || editingUpdate.referenceId)) ||
           (entry.taskId && entry.taskId !== "standalone" && !entry.isNewTask)
         );
-        const resolvedWorkUpdateRefId = (!isItemTaskPhase && editingUpdate?.workUpdateRefId)
-          ? editingUpdate.workUpdateRefId
+        const rawWorkUpdateRef = editingUpdate?.workUpdateRefId?._id || editingUpdate?.workUpdateRefId;
+        const resolvedWorkUpdateRefId = (!isItemTaskPhase && rawWorkUpdateRef)
+          ? rawWorkUpdateRef
           : undefined;
 
         const submitData = {
@@ -774,8 +807,9 @@ const EmployeeDailyWorkUpdate = () => {
           (editingUpdate?.task?._id && editingUpdate.task._id !== "standalone" && (editingUpdate.phaseId || editingUpdate.taskPhaseId || editingUpdate.referenceId)) ||
           (entry.taskId && entry.taskId !== "standalone" && !entry.isNewTask)
         );
+        const rawWorkUpdateRef = editingUpdate?.workUpdateRefId?._id || editingUpdate?.workUpdateRefId;
         const resolvedWorkUpdateRefId = (!isItemTaskPhase && editingUpdate)
-          ? (editingUpdate.workUpdateRefId || editingUpdate._id)
+          ? (rawWorkUpdateRef || editingUpdate._id)
           : undefined;
 
         const submitData = {
@@ -948,8 +982,9 @@ const EmployeeDailyWorkUpdate = () => {
   const handleDeleteUpdate = async (e, id) => {
     e.stopPropagation();
     const target = updates.find(u => u._id === id);
-    if (target && getStatusKey(target.status || target.phaseStatus) === "completed") {
-      toast.info("Completed work updates are locked and cannot be deleted.");
+    if (!target) return;
+    if (!isTodayUpdate(target.updateDate || target.createdAt)) {
+      toast.info("Work updates from previous days are locked and cannot be deleted.");
       return;
     }
     setDeleteTargetId(id);
@@ -959,8 +994,8 @@ const EmployeeDailyWorkUpdate = () => {
   const confirmDelete = async () => {
     if (!deleteTargetId) return;
     const target = updates.find(u => u._id === deleteTargetId);
-    if (target && getStatusKey(target.status || target.phaseStatus) === "completed") {
-      toast.error("Completed work updates are locked and cannot be deleted.");
+    if (!target || !isTodayUpdate(target.updateDate || target.createdAt)) {
+      toast.error("Work updates from previous days are locked and cannot be deleted.");
       setShowDeleteConfirm(false);
       setDeleteTargetId(null);
       return;
@@ -1315,7 +1350,7 @@ const EmployeeDailyWorkUpdate = () => {
   const handleExport = () => {
     if (updates.length === 0) return toast.info("No data to export");
     try {
-      const headers = ['S.No', 'Date', 'Category', 'Project', 'Task Title', 'Work Description', 'Status', 'Phase Working Days', 'Working Days'];
+      const headers = ['S.No', 'Date', 'Category', 'Project', 'Task Title', 'Work Description', 'Status', 'Working Days', 'Overall Task Days'];
 
       // Dynamic Width Calculation
       const baseWidth = 7;
@@ -1405,7 +1440,7 @@ const EmployeeDailyWorkUpdate = () => {
     <Cell ss:StyleID="CellTitle"><Data ss:Type="String">${escape(u.title || u.task?.taskTitle || "N/A")}</Data></Cell>
     <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape(u.description || "—")}</Data></Cell>
     <Cell ss:StyleID="CellBold"><Data ss:Type="String">${escape(u.status || "Pending")}</Data></Cell>
-    <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape(Boolean(u.phaseId || u.taskPhaseId || u.referenceId) && u.phaseWorkingDays !== undefined && u.phaseWorkingDays !== null ? String(u.phaseWorkingDays) : "—")}</Data></Cell>
+    <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape((u.workingDays !== undefined && u.workingDays !== null && u.workingDays > 0) ? String(u.workingDays) : (u.phaseWorkingDays ? String(u.phaseWorkingDays) : "1"))}</Data></Cell>
     <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape(u.overallTaskWorkingDays !== undefined && u.overallTaskWorkingDays !== null ? String(u.overallTaskWorkingDays) : "—")}</Data></Cell>
    </Row>`).join('')}
   </Table>
@@ -1836,6 +1871,17 @@ const EmployeeDailyWorkUpdate = () => {
                               </span>
                             </div>
 
+                            <div className="dwu-card-meta-col employeeTaskPage__col--workingdays">
+                              <span className="dwu-card-meta-label">Working Days</span>
+                              <span className="dwu-card-meta-value" style={{ color: "#2563eb", fontWeight: 600 }}>
+                                {(u.workingDays !== undefined && u.workingDays !== null && u.workingDays > 0)
+                                  ? `${u.workingDays} ${u.workingDays === 1 ? 'day' : 'days'}`
+                                  : (u.phaseWorkingDays !== undefined && u.phaseWorkingDays !== null && u.phaseWorkingDays > 0)
+                                    ? `${u.phaseWorkingDays} ${u.phaseWorkingDays === 1 ? 'day' : 'days'}`
+                                    : "1 day"}
+                              </span>
+                            </div>
+
                             <div className="dwu-card-meta-col employeeTaskPage__col--status">
                               <span className="dwu-card-meta-label">Status</span>
                               <div className="dwu-card-meta-value">
@@ -1865,10 +1911,10 @@ const EmployeeDailyWorkUpdate = () => {
                                     <span>Task</span>
                                     <ExternalLink size={12} />
                                   </button>
-                                ) : (getStatusKey(u.status || u.phaseStatus) === "completed" && !isTodayUpdate(u.updateDate || u.createdAt)) ? (
+                                ) : !isTodayUpdate(u.updateDate || u.createdAt) ? (
                                   <span
                                     className="dwu-row-locked-icon"
-                                    title="Completed work update from previous day is locked"
+                                    title="Work updates from previous days cannot be edited or deleted"
                                   >
                                     <Lock size={15} />
                                   </span>
@@ -1885,15 +1931,13 @@ const EmployeeDailyWorkUpdate = () => {
                                       <Edit2 size={15} />
                                     </div>
 
-                                    {isTodayUpdate(u.updateDate || u.createdAt) && (
-                                      <div
-                                        className="dwu-row-delete-icon"
-                                        onClick={(e) => handleDeleteUpdate(e, u._id)}
-                                        title="Delete Update"
-                                      >
-                                        <Trash2 size={15} />
-                                      </div>
-                                    )}
+                                    <div
+                                      className="dwu-row-delete-icon"
+                                      onClick={(e) => handleDeleteUpdate(e, u._id)}
+                                      title="Delete Update"
+                                    >
+                                      <Trash2 size={15} />
+                                    </div>
                                   </>
                                 )}
                               </div>

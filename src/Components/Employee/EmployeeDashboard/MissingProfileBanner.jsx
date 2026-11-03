@@ -177,7 +177,7 @@ const MissingProfileBanner = ({ employee, profileCompletion = 0 }) => {
                 </span>
               ) : restriction.daysRemaining > 0 ? (
                 <span>
-                  <strong>7-Day Completion Period:</strong> {restriction.daysRemaining} day{restriction.daysRemaining === 1 ? "" : "s"} remaining to complete your profile to 100%. Complete the remaining details to maintain unrestricted access.
+                  <strong style={{ color: "#64748b" , fontWeight:"500"}}>7-Day Completion Period:</strong> <span style={{ color: "#000000" }}>{restriction.daysRemaining}</span> day{restriction.daysRemaining === 1 ? "" : "s"} remaining to complete your profile to 100%. Complete the remaining details to maintain unrestricted access.
                 </span>
               ) : (
                 "Complete the remaining details and upload documents to finish your profile."

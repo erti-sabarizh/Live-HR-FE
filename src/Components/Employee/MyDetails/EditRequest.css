@@ -1,47 +1,55 @@
 /* ================= EDIT REQUEST MODAL ================= */
+.edit-request-modal .modal-dialog {
+  max-width: 720px !important;
+  width: 92% !important;
+  margin: 1.25rem auto !important;
+}
+
 .edit-request-modal .modal-content {
   border-radius: 16px;
   border: none;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  max-height: 90vh;
 }
 
 .edit-request-modal .modal-header {
   border-bottom: 1px solid #f0f0f0;
-  padding: 8px 24px;
+  padding: 10px 20px !important;
 }
 
 .edit-request-modal .modal-title {
   display: flex;
   align-items: center;
-  gap: 15px;
-  font-size: 18px;
-  padding-top: 5px;
-  font-weight: 500;
+  gap: 12px;
+  font-size: 17px !important;
+  padding-top: 0 !important;
+  font-weight: 600;
   color: #3a466d;
 }
 
 .edit-request-modal .modal-description {
   color: #868585 !important;
-  font-size: 14px;
-  margin-bottom: 15px;
+  font-size: 13px !important;
+  margin-bottom: 8px !important;
   font-family: "Gilroy", Gilroy-Regular;
   font-weight: 100 !important;
+  line-height: 1.35 !important;
 }
 
 .edit-request-modal .modal-body {
-  padding: 16px 24px;
+  padding: 10px 20px !important;
 }
 
 /* Sections Grid Container */
 .sections-grid-container {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px !important;
+  margin-bottom: 8px !important;
 }
 
 .section-selection-item {
-  padding: 10px 14px;
+  padding: 6px 12px !important;
   border-radius: 8px;
   border: 1.5px solid #e5e7eb;
   background: #fafafa;
@@ -66,7 +74,7 @@
 .section-label {
   font-weight: 500;
   color: #1f2a44;
-  font-size: 15px;
+  font-size: 13.5px !important;
 }
 
 .section-selection-item .form-check-label {
@@ -77,22 +85,24 @@
 .section-sublabel {
   font-size: 11px;
   color: #6b7280;
-  margin-top: 2px;
+  margin-top: 1px !important;
   line-height: 1.2;
 }
 
 .edit-title{
-  font-size: 15px;
+  font-size: 13.5px !important;
   font-weight: 500;
+  margin-bottom: 3px !important;
 }
 .edit-request-modal .request-textarea {
-  border-radius: 10px;
-  border: 2px solid #e5e7eb;
-  padding: 10px;
-  font-size: 14px;
+  border-radius: 8px;
+  border: 1.5px solid #e5e7eb;
+  padding: 8px 10px !important;
+  font-size: 13px !important;
   transition: all 0.2s ease;
   resize: none;
-  height: 80px;
+  height: 55px !important;
+  min-height: 55px !important;
 }
 
 .edit-request-modal .request-textarea:focus {
@@ -102,8 +112,8 @@
 
 .edit-request-modal .modal-footer {
   border-top: 1px solid #f0f0f0;
-  padding: 12px 24px;
-  gap: 12px;
+  padding: 8px 20px !important;
+  gap: 10px;
 }
 
 .edit-request-modal .send-request-btn {
@@ -273,15 +283,15 @@
 
 .edit-request-modal .modal-description {
   color: #6c757d;
-  margin-bottom: 20px;
+  margin-bottom: 8px !important;
 }
 
 .edit-request-modal .request-textarea {
-  border: 2px solid #e0e0e0;
+  border: 1.5px solid #e0e0e0;
   border-radius: 8px;
-  padding: 12px;
-  font-size: 12px;
-  font-weight: 200;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 400;
   transition: border-color 0.3s;
 }
 

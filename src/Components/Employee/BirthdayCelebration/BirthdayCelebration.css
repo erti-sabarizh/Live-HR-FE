@@ -1,0 +1,478 @@
+/* ==========================================================================
+   ERITTECH HR PORTAL – CINEMATIC BIRTHDAY CELEBRATION ANIMATION
+   ========================================================================== */
+
+/* 1. Main Fullscreen Fixed Transparent Celebration Overlay (Light Subtle Blur) */
+.bday-celebration-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99990;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px); /* Subtle reduced blur so dashboard remains clearly visible */
+  -webkit-backdrop-filter: blur(3px);
+  background: rgba(255, 255, 255, 0.04);
+  pointer-events: none; /* Let dashboard scroll naturally */
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+              backdrop-filter 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+              -webkit-backdrop-filter 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bday-celebration-overlay.bday-overlay-fading {
+  opacity: 0;
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+}
+
+/* 2. Fullscreen Confetti Canvas */
+.bday-confetti-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 99995;
+}
+
+/* ==========================================================================
+   3. REAL 3D PARTY POPPERS (THREE.JS / WebGL / popper.glb)
+   ========================================================================== */
+.bday-popper-fixed {
+  position: fixed;
+  bottom: 0;
+  z-index: 100000;
+  pointer-events: none;
+  width: clamp(160px, 22vw, 290px);
+  height: clamp(160px, 22vw, 290px);
+  transition: transform 0.65s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.65s ease;
+}
+
+/* Left Popper: locked strictly at bottom-left corner of screen */
+.bday-popper-left {
+  left: 0;
+  transform-origin: bottom left;
+  animation: bday3DPopperEnterLeft 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Right Popper: locked strictly at bottom-right corner of screen */
+.bday-popper-right {
+  right: 0;
+  transform-origin: bottom right;
+  animation: bday3DPopperEnterRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.bday-popper-exiting.bday-popper-left {
+  transform: translate(-120%, 120%) scale(0.6) rotate(-20deg);
+  opacity: 0;
+}
+
+.bday-popper-exiting.bday-popper-right {
+  transform: translate(120%, 120%) scale(0.6) rotate(20deg);
+  opacity: 0;
+}
+
+/* 3D WebGL Canvas Mount */
+.bday-popper-3d-mount {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.bday-popper-3d-mount canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  filter: drop-shadow(0 15px 30px rgba(0, 0, 0, 0.3));
+}
+
+@keyframes bday3DPopperEnterLeft {
+  0% {
+    transform: translate(-100px, 100px) scale(0.5);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes bday3DPopperEnterRight {
+  0% {
+    transform: translate(100px, 100px) scale(0.5);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Muzzle Flash & Radiant Glow */
+.bday-popper-muzzle-flash {
+  position: absolute;
+  pointer-events: none;
+  z-index: 100001;
+}
+
+.bday-flash-left {
+  top: 15%;
+  right: 15%;
+}
+
+.bday-flash-right {
+  top: 15%;
+  left: 15%;
+}
+
+.bday-flash-glow {
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(circle, rgba(254, 240, 138, 0.95) 0%, rgba(249, 115, 22, 0.6) 40%, transparent 70%);
+  border-radius: 50%;
+  animation: bdayFlashGlow 0.55s ease-out forwards;
+}
+
+@keyframes bdayFlashGlow {
+  0% { transform: scale(0.3); opacity: 0; }
+  35% { transform: scale(1.6); opacity: 1; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+/* ==========================================================================
+   4. BIRTHDAY CARD CONTAINER & CENTERING
+   ========================================================================== */
+.bday-card-centering-wrap {
+  position: relative;
+  z-index: 99992;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: transform 0.85s cubic-bezier(0.34, 1.3, 0.64, 1),
+              opacity 0.65s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bday-card-pre-entrance {
+  transform: translateY(140px) scale(0.82);
+  opacity: 0;
+}
+
+.bday-card-entered {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  animation: bdayCardHover 4s ease-in-out infinite alternate 1.2s;
+}
+
+.bday-card-exiting {
+  transform: translateY(-60px) scale(0.9) !important;
+  opacity: 0 !important;
+  animation: none !important;
+}
+
+@keyframes bdayCardHover {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    transform: translateY(-8px) scale(1.01);
+  }
+}
+
+.bday-card-aspect-box {
+  position: relative;
+  width: min(88vw, 760px);
+  aspect-ratio: 1536 / 1024;
+  max-height: 80vh;
+  margin: auto;
+  container-type: inline-size;
+  container-name: bdaycard;
+  filter: drop-shadow(0 20px 45px rgba(0, 0, 0, 0.22));
+}
+
+.bday-card-bg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+/* Dynamic Text Overlay inside Empty Central Ivory Panel */
+.bday-card-content-overlay {
+  position: absolute;
+  top: 25.5%;
+  left: 28%;
+  right: 22.5%;
+  bottom: 13.5%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.bday-card-text-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4%;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   5. TYPEWRITER (LETTER BY LETTER) TYPOGRAPHY & ANIMATIONS
+   ========================================================================== */
+
+/* Typewriter Caret */
+.bday-caret {
+  display: inline-block;
+  font-weight: 300;
+  opacity: 0.85;
+  color: #EA2E1B;
+  animation: bdayBlinkCaret 0.7s infinite;
+  margin-left: 2px;
+}
+
+@keyframes bdayBlinkCaret {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+/* 1. Main Heading: HAPPY BIRTHDAY! */
+.bday-text-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.05;
+  margin-bottom: 2%;
+  min-height: clamp(38px, 10cqi, 90px);
+}
+
+.bday-heading-happy {
+  font-family: 'Great Vibes', 'Dancing Script', 'Caveat', 'Playfair Display', 'Gilroy', cursive, sans-serif;
+  font-size: clamp(16px, 4.4cqi, 38px);
+  font-weight: 700;
+  color: #312E81;
+  text-shadow: 0 2px 4px rgba(49, 46, 129, 0.15);
+  letter-spacing: 0.5px;
+  min-height: clamp(18px, 4.4cqi, 38px);
+}
+
+.bday-heading-birthday {
+  font-family: 'Gilroy-Bold', 'Gilroy', sans-serif;
+  font-size: clamp(22px, 6.6cqi, 58px);
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  background: linear-gradient(180deg, #FF6B4A 0%, #EA2E1B 65%, #C41607 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 3px 8px rgba(234, 46, 27, 0.32));
+  min-height: clamp(24px, 6.6cqi, 58px);
+}
+
+/* 2. Employee Name */
+.bday-text-name-wrapper {
+  margin-bottom: 2%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: clamp(24px, 6cqi, 48px);
+}
+
+.bday-text-employee-name {
+  margin: 0;
+  font-family: 'Gilroy-Bold', 'Gilroy', sans-serif;
+  font-size: clamp(16px, 4.2cqi, 34px);
+  font-weight: 800;
+  color: #0F172A;
+  letter-spacing: -0.3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Decorative Heart Divider */
+.bday-heart-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 1.5% 0 1% 0;
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.bday-heart-hidden {
+  opacity: 0;
+  transform: scale(0.3);
+}
+
+.bday-heart-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.bday-heart-icon {
+  font-size: clamp(11px, 2.2cqi, 18px);
+  animation: bdayHeartBeat 1.4s ease-in-out infinite;
+  display: inline-block;
+}
+
+@keyframes bdayHeartBeat {
+  0%, 100% { transform: scale(1); }
+  25% { transform: scale(1.18); }
+  40% { transform: scale(1); }
+  60% { transform: scale(1.15); }
+}
+
+/* 3. Birthday Message */
+.bday-text-message {
+  margin: 1.5% 0 2% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: clamp(34px, 7.5cqi, 60px);
+}
+
+.bday-message-line {
+  margin: 0;
+  font-family: 'Gilroy-Medium', 'Gilroy', sans-serif;
+  font-size: clamp(10.5px, 2.35cqi, 18.5px);
+  font-weight: 600;
+  color: #1E293B;
+  line-height: 1.35;
+  letter-spacing: 0.1px;
+}
+
+/* 4. Footer */
+.bday-text-footer {
+  margin-top: 1.5%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.25;
+  min-height: clamp(24px, 5cqi, 40px);
+}
+
+.bday-footer-love {
+  margin: 0;
+  font-family: 'Gilroy-Medium', 'Gilroy', sans-serif;
+  font-size: clamp(9.5px, 2.05cqi, 16px);
+  font-weight: 600;
+  color: #4338CA;
+}
+
+.bday-footer-team {
+  margin: 0;
+  font-family: 'Gilroy-Bold', 'Gilroy', sans-serif;
+  font-size: clamp(10px, 2.2cqi, 17.5px);
+  font-weight: 700;
+  color: #312E81;
+}
+
+/* ==========================================================================
+   6. THANK YOU BUTTON (POSITIONED AT BOTTOM OF SCREEN, AWAY FROM CARD)
+   ========================================================================== */
+.bday-bottom-action-wrap {
+  position: fixed;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100010;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto !important;
+  animation: bdayThankYouFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.bday-bottom-action-wrap.bday-btn-exiting {
+  opacity: 0 !important;
+  transform: translate(-50%, 15px) scale(0.95) !important;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.bday-thank-you-btn {
+  pointer-events: auto !important;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: linear-gradient(135deg, #FF6B4A 0%, #EA2E1B 50%, #C41607 100%);
+  color: #FFFFFF;
+  font-family: 'Gilroy-Bold', 'Gilroy', sans-serif;
+  font-size: clamp(14px, 1.15vw, 18px);
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 10px 42px;
+  border-radius: 9999px;
+  box-shadow: 0 6px 22px rgba(234, 46, 27, 0.45),
+              0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  text-transform: none;
+}
+
+.bday-thank-you-btn:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 8px 28px rgba(234, 46, 27, 0.6),
+              0 4px 8px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(135deg, #FF7B5C 0%, #F03825 50%, #D41B0B 100%);
+}
+
+.bday-thank-you-btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+@keyframes bdayThankYouFadeIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 20px) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+/* ==========================================================================
+   7. RESPONSIVE CONTAINER & MEDIA QUERIES
+   ========================================================================== */
+@media (max-width: 768px) {
+  .bday-card-aspect-box {
+    width: 94vw;
+  }
+  .bday-popper-fixed {
+    width: clamp(130px, 24vw, 190px);
+    height: clamp(130px, 24vw, 190px);
+  }
+  .bday-bottom-action-wrap {
+    bottom: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .bday-card-aspect-box {
+    width: 98vw;
+  }
+  .bday-popper-fixed {
+    width: 110px;
+    height: 110px;
+  }
+  .bday-celebration-overlay {
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  .bday-bottom-action-wrap {
+    bottom: 16px;
+  }
+}

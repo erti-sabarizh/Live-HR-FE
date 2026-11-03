@@ -26,14 +26,17 @@ const EmployeeProfileGuard = ({ children }) => {
     try {
       const raw = sessionStorage.getItem("Erti-Portal");
       const stored = raw ? JSON.parse(raw) : {};
+      const comp = Number(stored.profileCompletion ?? user?.profileCompletion ?? 0);
+      const isComp = stored.isProfileCompleted ?? user?.isProfileCompleted ?? (comp >= 100);
       return {
         ...stored,
         ...(user || {}),
         token: stored.token || user?.token,
         role: stored.role || user?.role,
-        profileCompletion: stored.profileCompletion ?? user?.profileCompletion,
+        profileCompletion: comp,
         dateJoined: stored.dateJoined || user?.dateJoined,
-        isProfileCompleted: stored.isProfileCompleted ?? user?.isProfileCompleted,
+        isProfileCompleted: isComp || comp >= 100,
+        isProfileRestricted: (comp >= 100 || isComp) ? false : (stored.isProfileRestricted ?? user?.isProfileRestricted),
         profileApprovalStatus: stored.profileApprovalStatus || user?.profileApprovalStatus,
         reviewedAt: stored.reviewedAt || user?.reviewedAt,
         profileRejectedAt: stored.profileRejectedAt || user?.profileRejectedAt,
@@ -43,7 +46,7 @@ const EmployeeProfileGuard = ({ children }) => {
     }
   };
 
-  // If completion data is missing on mount, fetch once from backend
+  // If completion data is missing or < 100% on mount, fetch once from backend
   useEffect(() => {
     const raw = sessionStorage.getItem("Erti-Portal");
     const stored = raw ? JSON.parse(raw) : null;
@@ -53,7 +56,7 @@ const EmployeeProfileGuard = ({ children }) => {
 
     if (
       !fetchedOnceRef.current &&
-      (current.profileCompletion === undefined || current.dateJoined === undefined)
+      (current.profileCompletion === undefined || Number(current.profileCompletion) < 100 || current.dateJoined === undefined)
     ) {
       fetchedOnceRef.current = true;
       portalInstance
@@ -62,15 +65,17 @@ const EmployeeProfileGuard = ({ children }) => {
           if (res.data?.success) {
             const rawStored = sessionStorage.getItem("Erti-Portal");
             const latestStored = rawStored ? JSON.parse(rawStored) : {};
+            const comp = Number(res.data.profileCompletion ?? 0);
+            const isComp = res.data.isProfileCompleted || comp >= 100;
 
             const updated = {
               ...latestStored,
               ...current,
               token: latestStored.token || current.token, // CRITICAL: NEVER DROP TOKEN
-              profileCompletion: res.data.profileCompletion ?? 0,
+              profileCompletion: comp,
               dateJoined: res.data.dateJoined || latestStored.dateJoined || null,
-              isProfileCompleted: res.data.isProfileCompleted ?? false,
-              isProfileRestricted: res.data.isProfileRestricted ?? false,
+              isProfileCompleted: isComp,
+              isProfileRestricted: isComp ? false : (res.data.isProfileRestricted ?? false),
               daysRemainingForProfile: res.data.daysRemaining ?? 7,
               isLastDayForProfile: res.data.isLastDay ?? false,
               isRejectedForProfile: res.data.isRejected ?? false,

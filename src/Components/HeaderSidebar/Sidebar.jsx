@@ -84,6 +84,46 @@ function Sidebar() {
 
   const roleSetByAPI = useRef(false);
 
+  // ── Sidebar Menu Customization States ──
+  const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
+  const [settingsRotateDeg, setSettingsRotateDeg] = useState(0);
+  const [menuSearchQuery, setMenuSearchQuery] = useState("");
+  const settingsDropdownRef = useRef(null);
+  const [visibleMenuTitles, setVisibleMenuTitles] = useState(() => {
+    try {
+      const key = `sidebar_custom_menus_${loggedInUserId || "default"}`;
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (!loggedInUserId && !role) return;
+    try {
+      const key = `sidebar_custom_menus_${loggedInUserId || role || "default"}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        setVisibleMenuTitles(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Error loading menu preferences", e);
+    }
+  }, [loggedInUserId, role]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setShowSettingsDrawer(false);
+      }
+    };
+    if (showSettingsDrawer) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showSettingsDrawer]);
+
   // ── Format Helper ──
   const formatTimeAgo = (dateString) => {
     if (!dateString) return "";
@@ -462,7 +502,9 @@ function Sidebar() {
               n.type === "PROFILE_APPROVED" ||
               n.type === "PROFILE_REJECTED" ||
               n.type === "PERMISSION_APPROVED" ||
-              n.type === "PERMISSION_REJECTED")
+              n.type === "PERMISSION_REJECTED" ||
+              n.type === "EDIT_APPROVED" ||
+              n.type === "EDIT_REJECTED")
         );
         generalNotifs = filtered
           .filter((n) => !dismissedIds.includes(n._id))
@@ -475,21 +517,27 @@ function Sidebar() {
               ? "PROFILE_DECISION"
               : n.type?.startsWith("HR_APPROVAL")
               ? "HR_APPROVAL_DECISION"
+              : n.type?.startsWith("EDIT")
+              ? "EDIT_DECISION"
               : "SECURITY_DECISION",
             title:
               n.title ||
-              (n.type === "PERMISSION_APPROVED"
+              (n.type === "EDIT_APPROVED"
+                ? "Profile Edit Request Approved"
+                : n.type === "EDIT_REJECTED"
+                ? "Profile Edit Request Rejected"
+                : n.type === "PERMISSION_APPROVED"
                 ? "Permission Approved"
                 : "Permission Rejected"),
             message: n.message,
             subtext:
-              n.type === "PERMISSION_APPROVED"
+              n.type === "EDIT_APPROVED" || n.type === "PERMISSION_APPROVED" || n.type === "PROFILE_APPROVED"
                 ? "Approved by Admin"
-                : n.type === "PERMISSION_REJECTED"
+                : n.type === "EDIT_REJECTED" || n.type === "PERMISSION_REJECTED" || n.type === "PROFILE_REJECTED"
                 ? "Rejected by Admin"
                 : "",
             targetModule: n.metadata?.targetModule || n.targetModule,
-            url: n.metadata?.url || n.url || "/emp/request-leave",
+            url: n.metadata?.url || n.url || (n.type === "EDIT_APPROVED" ? "/emp/my-details/edit" : "/emp/my-details"),
             timestamp: n.createdAt,
             time: n.createdAt,
           }));
@@ -579,7 +627,7 @@ function Sidebar() {
           console.error("Failed to dismiss holiday assignment notification:", err);
         }
       }
-      if (notif.type === "SECURITY_DECISION" || notif.type === "HR_APPROVAL_DECISION" || notif.type === "PROFILE_DECISION" || notif.type === "PERMISSION_DECISION") {
+      if (notif.type === "SECURITY_DECISION" || notif.type === "HR_APPROVAL_DECISION" || notif.type === "PROFILE_DECISION" || notif.type === "PERMISSION_DECISION" || notif.type === "EDIT_DECISION") {
         try {
           await portalInstance.put(`/api/notifications/${notif.id}/read`);
         } catch (err) {
@@ -635,7 +683,8 @@ function Sidebar() {
             n.type === "SECURITY_DECISION" ||
             n.type === "PROFILE_DECISION" ||
             n.type === "HR_APPROVAL_DECISION" ||
-            n.type === "PERMISSION_DECISION"
+            n.type === "PERMISSION_DECISION" ||
+            n.type === "EDIT_DECISION"
           ) {
             try {
               await portalInstance.put(`/api/notifications/${n.id}/read`);
@@ -725,7 +774,7 @@ function Sidebar() {
           console.error("Failed to dismiss holiday assignment notification:", err);
         }
       }
-      if (notif.type === "SECURITY_DECISION" || notif.type === "HR_APPROVAL_DECISION" || notif.type === "PROFILE_DECISION" || notif.type === "PERMISSION_DECISION") {
+      if (notif.type === "SECURITY_DECISION" || notif.type === "HR_APPROVAL_DECISION" || notif.type === "PROFILE_DECISION" || notif.type === "PERMISSION_DECISION" || notif.type === "EDIT_DECISION") {
         try {
           await portalInstance.put(`/api/notifications/${notif.id}/read`);
         } catch (err) {
@@ -735,7 +784,7 @@ function Sidebar() {
       setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
       if (notif.type === "PERMISSION_DECISION") {
         navigate(notif.url || "/emp/request-leave");
-      } else if (notif.type === "PROFILE_DECISION") {
+      } else if (notif.type === "PROFILE_DECISION" || notif.type === "EDIT_DECISION") {
         navigate(notif.url || "/emp/my-details");
       } else if (notif.type === "TASK") {
         navigate("/emp/tasks");
@@ -880,11 +929,14 @@ function Sidebar() {
                   : (stored.doj || "N/A"),
                 dateJoined: emp.dateOfJoining || stored.dateJoined,
                 isHr: !!emp.isHr,
-                permissions: emp.permissions || stored.permissions || [],
+                permissions: Array.isArray(emp.permissions)
+                  ? emp.permissions
+                  : (stored.permissions || []),
                 token: stored.token,
-                profileCompletion: stored.profileCompletion,
-                isProfileCompleted: stored.isProfileCompleted,
-                isProfileRestricted: stored.isProfileRestricted,
+                profileCompletion: emp.profileCompletion !== undefined ? Number(emp.profileCompletion) : Number(stored.profileCompletion ?? 0),
+                isProfileCompleted: emp.isProfileCompleted ?? (Number(emp.profileCompletion ?? stored.profileCompletion ?? 0) >= 100 || stored.isProfileCompleted),
+                isProfileRestricted: (Number(emp.profileCompletion ?? stored.profileCompletion ?? 0) >= 100 || emp.isProfileCompleted || stored.isProfileCompleted) ? false : stored.isProfileRestricted,
+                profileApprovalStatus: emp.profileApprovalStatus || stored.profileApprovalStatus,
                 daysRemainingForProfile: stored.daysRemainingForProfile,
                 profileDeadline: stored.profileDeadline,
               };
@@ -932,6 +984,14 @@ function Sidebar() {
     };
 
     loadUserData();
+
+    const handlePermUpdate = () => {
+      loadUserData();
+    };
+    window.addEventListener("menuPermissionsUpdated", handlePermUpdate);
+    return () => {
+      window.removeEventListener("menuPermissionsUpdated", handlePermUpdate);
+    };
   }, []);
 
   /* ══════════════════════════════════════════
@@ -1095,8 +1155,8 @@ function Sidebar() {
     } else {
       if (path.includes("/holiday-management")) parent = "Holiday Management";
       else if (path.includes("/leave-management")) {
-        parent = "Leave & Holidays";
-        child = "Leave Management";
+        parent = "Leaves & Holidays";
+        child = "Manage Leaves";
       }
       else if (path.includes("/dashboard")) parent = "Dashboard";
       else if (path.includes("/remainder")) parent = "Remainder";
@@ -1127,7 +1187,7 @@ function Sidebar() {
       }
       else if (path.includes("/salary-slip")) parent = "Salary Slip";
       else if (path.includes("/holiday-requests") || path.includes("/holiday-calendar")) {
-        parent = "Leave & Holidays";
+        parent = "Leaves & Holidays";
         child = "Holiday Requests";
       }
       else if (path.includes("/emp/audit")) {
@@ -1154,7 +1214,7 @@ function Sidebar() {
     if (nestedParent) {
       setOpenSubMenus({ [nestedParent]: true });
     }
-    if (["Employees", "Employee Attendance", "Leave & Holidays", "Slip Generation", "HR Requests"].includes(parent)) {
+    if (["Employees", "Employee Attendance", "Leaves & Holidays", "Leave & Holidays", "Slip Generation", "HR Requests"].includes(parent)) {
       setIsHrSectionOpen(true);
     }
     setIsMobileMenuOpen(false);
@@ -1233,7 +1293,13 @@ function Sidebar() {
       return;
     }
 
-    const restriction = checkProfileRestriction(user);
+    const storedUser = JSON.parse(sessionStorage.getItem("Erti-Portal") || "{}");
+    const activeUser = { ...storedUser, ...(user || {}) };
+    if (Number(activeUser.profileCompletion ?? 0) >= 100) {
+      activeUser.isProfileCompleted = true;
+      activeUser.isProfileRestricted = false;
+    }
+    const restriction = checkProfileRestriction(activeUser);
     if (
       restriction.isRestricted &&
       path !== "/emp/my-details" &&
@@ -1284,6 +1350,49 @@ function Sidebar() {
     setUser(null);
     setRole(null);
     window.location.href = "/";
+  };
+
+  const hasUserMenuPermission = (moduleName, subMenuName = null) => {
+    const userPermissions = user?.permissions || [];
+    if (!Array.isArray(userPermissions) || userPermissions.length === 0) return false;
+
+    const clean = (str) =>
+      (str || "")
+        .toLowerCase()
+        .replace(/&/g, "and")
+        .replace(/leaves/g, "leave")
+        .replace(/\s+/g, "")
+        .replace(/[^a-z0-9]/g, "");
+
+    const targetMod = clean(moduleName);
+    const targetSub = subMenuName ? clean(subMenuName) : null;
+
+    return userPermissions.some((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const pMod = clean(p.module);
+      if (pMod !== targetMod) return false;
+
+      // If user has permission for the whole module (subMenu is null/empty/undefined or "Entire Menu")
+      if (!p.subMenu || clean(p.subMenu) === "" || clean(p.subMenu) === clean("Entire Menu (All Submenus)")) {
+        return true;
+      }
+
+      // If checking for a specific subMenu
+      if (targetSub) {
+        const pSub = clean(p.subMenu);
+        if (pSub === targetSub) return true;
+        // Handle alias between Manage Leaves and Leave Management
+        if (
+          (targetSub === "manageleave" || targetSub === "manageleaves" || targetSub === "leavemanagement") &&
+          (pSub === "manageleave" || pSub === "manageleaves" || pSub === "leavemanagement")
+        ) {
+          return true;
+        }
+        return false;
+      }
+
+      return true;
+    });
   };
 
   const adminMenu = [
@@ -1376,12 +1485,16 @@ function Sidebar() {
     ...(!user?.isHr
       ? [
         {
-          title: "Leave & Holidays",
+          title: "Leaves & Holidays",
           iconName: "Leave Requests",
           subItems: [
-            { label: "Holiday Requests", path: "/emp/holiday-requests", iconName: "Leave Requests", requiresHolidayAssignment: true }
-          ]
-        }
+            { label: "Holiday Requests", path: "/emp/holiday-requests", iconName: "Leave Requests", requiresHolidayAssignment: true },
+            { label: "Manage Leaves", path: "/admin/leave-management", iconName: "Manage Employee" },
+            { label: "Leave Requests", path: "/admin/leaves", iconName: "Leave Requests" },
+            { label: "Holiday List", path: "/admin/Holiday", iconName: "Holidays List" },
+            { label: "Holiday Configuration", path: "/admin/holiday-management", iconName: "Audit Management" },
+          ],
+        },
       ]
       : []),
     {
@@ -1398,6 +1511,56 @@ function Sidebar() {
       iconName: "Audit Dashboard",
       path: "/crawler",
     },
+    ...(!user?.isHr
+      ? [
+        ...(hasUserMenuPermission("Employees") ? [{
+          title: "Employees",
+          iconName: "Employee",
+          subItems: [
+            { label: "Add Employee", path: "/admin/employees/add-employee", iconName: "Add" },
+            { label: "Manage Employee", path: "/admin/employees/manage-employee", iconName: "Manage Employee" },
+          ].filter(s => hasUserMenuPermission("Employees", s.label))
+        }].filter(m => m.subItems.length > 0) : []),
+
+        ...(hasUserMenuPermission("Attendance") ? [{
+          title: "Employee Attendance",
+          iconName: "Attendance",
+          subItems: [
+            { label: "Daily Report", path: "/admin/attendance", iconName: "Attendance" },
+            { label: "Attendance Report", path: "/admin/attendance-report", iconName: "Attendance" },
+          ].filter(s => hasUserMenuPermission("Attendance", s.label))
+        }].filter(m => m.subItems.length > 0) : []),
+
+        ...(hasUserMenuPermission("Daily Work Update") ? [{
+          title: "Daily Work Update",
+          iconName: "Admin Daily Work Update",
+          path: "/admin/daily-work-updates"
+        }] : []),
+
+        ...(hasUserMenuPermission("Project Details") ? [{
+          title: "Project Details",
+          iconName: "Tasks",
+          path: "/admin/project-details"
+        }] : []),
+
+        ...(hasUserMenuPermission("Slip Generation") ? [{
+          title: "Slip Generation",
+          iconName: "Salary Slip",
+          subItems: [
+            { label: "Payslip", path: "/admin/payslip-generator", iconName: "Salary Slip" },
+            { label: "Appointment Letter", path: "/admin/appointment-letter", iconName: "Salary Slip" },
+            { label: "Termination Letter", path: "/admin/termination-letter", iconName: "Salary Slip" },
+            { label: "Increment Letter", path: "/admin/increment-letter", iconName: "Salary Slip" },
+          ].filter(s => hasUserMenuPermission("Slip Generation", s.label))
+        }].filter(m => m.subItems.length > 0) : []),
+
+        ...(hasUserMenuPermission("HR Requests") ? [{
+          title: "HR Requests",
+          iconName: "Leave Requests",
+          path: "/admin/hr-requests"
+        }] : [])
+      ]
+      : []),
     // {
     //   title: "Social Media",
     //   iconName: "Social Media",
@@ -1454,11 +1617,11 @@ function Sidebar() {
           hrMenuItems.push(
             {
               isHrItem: true,
-              title: "Leave & Holidays",
+              title: "Leaves & Holidays",
               iconName: "Leave Requests",
               subItems: [
                 { label: "Holiday Requests", path: "/emp/holiday-requests", iconName: "Leave Requests", requiresHolidayAssignment: true },
-                { label: "Leave Management", path: "/admin/leave-management", iconName: "Manage Employee" }
+                { label: "Manage Leaves", path: "/admin/leave-management", iconName: "Manage Employee" }
               ]
             },
             {
@@ -1504,8 +1667,23 @@ function Sidebar() {
       });
       return { ...item, subItems: filteredSubItems };
     }
-    if (item.title === "Leave & Holidays") {
+    if (item.title === "Leave & Holidays" || item.title === "Leaves & Holidays") {
       const filteredSubItems = (item.subItems || []).filter(sub => {
+        if (sub.label === "Holiday Requests") {
+          return hasHolidayAssignment || user?.isHr;
+        }
+        if (sub.label === "Manage Leaves" || sub.label === "Leave Management") {
+          return user?.isHr || hasUserMenuPermission("Leaves & Holidays", "Manage Leaves");
+        }
+        if (sub.label === "Leave Requests") {
+          return user?.isHr || hasUserMenuPermission("Leaves & Holidays", "Leave Requests");
+        }
+        if (sub.label === "Holiday List") {
+          return hasUserMenuPermission("Leaves & Holidays", "Holiday List");
+        }
+        if (sub.label === "Holiday Configuration") {
+          return hasUserMenuPermission("Leaves & Holidays", "Holiday Configuration");
+        }
         if (sub.requiresHolidayAssignment && !hasHolidayAssignment && !user?.isHr) return false;
         return true;
       });
@@ -1516,11 +1694,92 @@ function Sidebar() {
     if (item.isSectionTitle) return true;
     if (item.requiresHolidayAssignment && !hasHolidayAssignment && !user?.isHr) return false;
     if (item.title === "Audit Management" && (!item.subItems || item.subItems.length === 0)) return false;
-    if (item.title === "Leave & Holidays" && (!item.subItems || item.subItems.length === 0)) return false;
+    if ((item.title === "Leave & Holidays" || item.title === "Leaves & Holidays") && (!item.subItems || item.subItems.length === 0)) return false;
     return true;
   });
 
-  const menuItems = role === "admin" ? adminMenu : employeeMenu;
+  const fullMenuItems = role === "admin" ? adminMenu : employeeMenu;
+
+  // Dashboard is default and essential, excluded from customization toggling
+  const configurableMenus = fullMenuItems.filter(
+    (item) => !item.isSectionTitle && item.title !== "Dashboard"
+  );
+
+  const menuItems = React.useMemo(() => {
+    if (!visibleMenuTitles || !Array.isArray(visibleMenuTitles)) {
+      return fullMenuItems;
+    }
+    return fullMenuItems.filter((item) => {
+      // Dashboard is default and always visible in sidebar
+      if (item.title === "Dashboard") {
+        return true;
+      }
+      if (item.isSectionTitle) {
+        return fullMenuItems.some(
+          (other) => other.isHrItem && (visibleMenuTitles.includes(other.title) || (other.title === "Leaves & Holidays" && visibleMenuTitles.includes("Leave & Holidays")))
+        );
+      }
+      if (hasUserMenuPermission(item.title)) {
+        return true;
+      }
+      return (
+        visibleMenuTitles.includes(item.title) ||
+        (item.title === "Leaves & Holidays" && visibleMenuTitles.includes("Leave & Holidays")) ||
+        (item.title === "Leave & Holidays" && visibleMenuTitles.includes("Leaves & Holidays"))
+      );
+    });
+  }, [fullMenuItems, visibleMenuTitles]);
+
+  const handleToggleMenuVisibility = (title) => {
+    if (title === "Dashboard") return;
+    const currentList =
+      visibleMenuTitles === null
+        ? configurableMenus.map((m) => m.title)
+        : [...visibleMenuTitles];
+
+    let updated;
+    if (currentList.includes(title)) {
+      updated = currentList.filter((t) => t !== title);
+    } else {
+      updated = [...currentList, title];
+    }
+
+    setVisibleMenuTitles(updated);
+    try {
+      const key = `sidebar_custom_menus_${loggedInUserId || role || "default"}`;
+      localStorage.setItem(key, JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to save sidebar menu settings:", e);
+    }
+  };
+
+  const handleSelectAllMenus = () => {
+    const allTitles = configurableMenus.map((m) => m.title);
+    setVisibleMenuTitles(allTitles);
+    try {
+      const key = `sidebar_custom_menus_${loggedInUserId || role || "default"}`;
+      localStorage.setItem(key, JSON.stringify(allTitles));
+    } catch (e) {}
+  };
+
+  const handleResetMenus = () => {
+    setVisibleMenuTitles(null);
+    try {
+      const key = `sidebar_custom_menus_${loggedInUserId || role || "default"}`;
+      localStorage.removeItem(key);
+    } catch (e) {}
+  };
+
+  const visibleCount =
+    visibleMenuTitles === null
+      ? configurableMenus.length
+      : configurableMenus.filter((m) => visibleMenuTitles.includes(m.title)).length;
+  const allSelected = visibleCount === configurableMenus.length;
+
+  const filteredConfigurableMenus = configurableMenus.filter((m) => {
+    if (!menuSearchQuery.trim()) return true;
+    return m.title.toLowerCase().includes(menuSearchQuery.toLowerCase().trim());
+  });
 
   const displayName = user?.name || "User";
   const displayPhoto = user?.photo || "/avatar.png";
@@ -1577,8 +1836,13 @@ function Sidebar() {
                     return null;
                   }
 
-                  const isOpen = openMenus[item.title];
-                  const isActive = activeItem === item.title;
+                  const isLeavesMatch = (t1, t2) =>
+                    t1 === t2 ||
+                    ((t1 === "Leaves & Holidays" || t1 === "Leave & Holidays") &&
+                     (t2 === "Leaves & Holidays" || t2 === "Leave & Holidays"));
+
+                  const isOpen = openMenus[item.title] || (isLeavesMatch(item.title, "Leaves & Holidays") && (!!openMenus["Leaves & Holidays"] || !!openMenus["Leave & Holidays"]));
+                  const isActive = isLeavesMatch(activeItem, item.title);
 
                   return (
                     <React.Fragment key={i}>
@@ -1586,7 +1850,16 @@ function Sidebar() {
                         className={`sidebar-menu-item ${isActive ? "active" : ""}`}
                         onClick={() => (item.subItems || item.subMenus) ? toggleMenu(item.title) : handleNavigate(item.path, item.title)}
                       >
-                        <img src={getIcon(item.iconName, isActive)} width={19} alt="" className="menu-icon" />
+                        <img
+                          src={getIcon(item.iconName, isActive)}
+                          width={19}
+                          alt=""
+                          className="menu-icon"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = "/ICONS/Audit%20Management.svg";
+                          }}
+                        />
                         <span>{item.title}</span>
                         {(item.subItems || item.subMenus) && (
                           <Icon icon="ep:arrow-right" className={`sidebar-chevron ${isOpen ? "open" : ""}`} />
@@ -1596,14 +1869,25 @@ function Sidebar() {
                       {item.subItems && isOpen && (
                         <ul className="sidebar-submenu open">
                           {item.subItems.map((sub, j) => {
-                            const isSubActive = activeSubItem === sub.label;
+                            const isSubActive =
+                              activeSubItem === sub.label ||
+                              (activeSubItem === "Leave Management" && sub.label === "Manage Leaves") ||
+                              (activeSubItem === "Manage Leaves" && sub.label === "Leave Management");
                             return (
                               <li
                                 key={j}
                                 className={`sidebar-submenu-item ${isSubActive ? "sub-active" : ""}`}
                                 onClick={(e) => { e.stopPropagation(); handleNavigate(sub.path, item.title, sub.label, true); }}
                               >
-                                <img src={getIcon(sub.iconName, isSubActive)} alt={`${sub.label} icon`} className="sidebar-submenu-icon" />
+                                <img
+                                  src={getIcon(sub.iconName, isSubActive)}
+                                  alt={`${sub.label} icon`}
+                                  className="sidebar-submenu-icon"
+                                  onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = "/ICONS/Audit%20Management.svg";
+                                  }}
+                                />
                                 <span>{sub.label}</span>
                               </li>
                             );
@@ -1821,6 +2105,130 @@ function Sidebar() {
         </div>
 
         <div className="sidebar-header-right">
+          {/* Settings Icon & Drawer for Customizing Sidebar Menus */}
+          <div className="sidebar-settings-container" ref={settingsDropdownRef}>
+            <div
+              className={`sidebar-settings-wrapper ${showSettingsDrawer ? "active" : ""}`}
+              onClick={() => {
+                setSettingsRotateDeg((prev) => prev + 180);
+                setShowSettingsDrawer(!showSettingsDrawer);
+                setShowNotificationsDropdown(false);
+              }}
+              title="Customize Sidebar Menus"
+            >
+              <span
+                className="codex--settings sidebar-settings-icon"
+                style={{ transform: `rotate(${settingsRotateDeg}deg)` }}
+                aria-hidden="true"
+              ></span>
+            </div>
+
+            {showSettingsDrawer && (
+              <>
+                <div
+                  className="sidebar-settings-overlay"
+                  onClick={() => setShowSettingsDrawer(false)}
+                />
+                <div className="sidebar-settings-drawer">
+                  <div className="sidebar-settings-drawer-header">
+                    <div className="sidebar-settings-drawer-header-left">
+                      <span className="codex--settings" style={{ fontSize: "20px" }} aria-hidden="true"></span>
+                      <span>Customize Sidebar</span>
+                    </div>
+                    <div className="sidebar-settings-drawer-header-right">
+                      <button
+                        className="sidebar-settings-drawer-reset-btn"
+                        onClick={handleResetMenus}
+                        title="Restore all default menus"
+                      >
+                        Reset Default
+                      </button>
+                      <button
+                        className="sidebar-settings-drawer-close-btn"
+                        onClick={() => setShowSettingsDrawer(false)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="sidebar-settings-drawer-banner">
+                    <p className="sidebar-settings-drawer-desc">
+                      Choose which menus appear in your sidebar.
+                    </p>
+                    <div className="sidebar-settings-drawer-toolbar">
+                      <span className="sidebar-settings-drawer-counter">
+                        {visibleCount} of {configurableMenus.length} visible
+                      </span>
+                      <button
+                        className="sidebar-settings-drawer-toggle-all-btn"
+                        onClick={allSelected ? handleResetMenus : handleSelectAllMenus}
+                      >
+                        {allSelected ? "Deselect All" : "Select All"}
+                      </button>
+                    </div>
+                  </div>
+
+
+                  <div className="sidebar-settings-drawer-body">
+                    {filteredConfigurableMenus.length === 0 ? (
+                      <div className="text-center py-4 text-muted" style={{ fontSize: "13px" }}>
+                        No menus match "{menuSearchQuery}"
+                      </div>
+                    ) : (
+                      filteredConfigurableMenus.map((item) => {
+                        const isSelected =
+                          visibleMenuTitles === null
+                            ? true
+                            : visibleMenuTitles.includes(item.title);
+
+                        return (
+                          <div
+                            key={item.title}
+                            className={`sidebar-settings-menu-card ${isSelected ? "selected" : "unselected"}`}
+                            onClick={() => handleToggleMenuVisibility(item.title)}
+                          >
+                            <div className="sidebar-settings-card-left">
+                              <div className="sidebar-settings-card-icon-box">
+                                <img
+                                  src={getIcon(item.iconName, false)}
+                                  alt=""
+                                  onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = "/ICONS/Audit%20Management.svg";
+                                  }}
+                                />
+                              </div>
+                              <div className="sidebar-settings-card-text">
+                                <span className="sidebar-settings-card-title">{item.title}</span>
+                                {item.subItems && (
+                                  <span className="sidebar-settings-card-subinfo">
+                                    {item.subItems.length} sub-items
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <label
+                              className="sidebar-settings-switch-label"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleToggleMenuVisibility(item.title)}
+                              />
+                              <span className="sidebar-settings-slider"></span>
+                            </label>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Bell Icon & Dropdown Modal */}
           <div className="sidebar-bell-container" ref={notificationsDropdownRef}>
             <div className="sidebar-bell-wrapper" onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}>

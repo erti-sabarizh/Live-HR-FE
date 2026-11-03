@@ -1570,8 +1570,8 @@ const BulkPayslipModal = ({ onClose, onGenerated, employees, form, fetchEmployee
 ───────────────────────────────────────────── */
 const Payslip = () => {
   const { user } = useUser();
-  const canGenerateSlips = canHrGenerateSlips(user);
-  const canDeleteSlips = canHrDeleteSlips(user);
+  const canGenerateSlips = useMemo(() => canHrGenerateSlips(user), [user]);
+  const canDeleteSlips = useMemo(() => canHrDeleteSlips(user), [user]);
 
   const [loading, setLoading] = useState(false);
   const [slipLoading, setSlipLoading] = useState(true);

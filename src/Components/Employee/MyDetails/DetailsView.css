@@ -1065,46 +1065,53 @@
 }
 
 /* ================= MODAL CUSTOMIZATION ================= */
+.edit-request-modal .modal-dialog {
+  max-width: 720px !important;
+  width: 92% !important;
+  margin: 1.25rem auto !important;
+}
+
 .edit-request-modal .modal-content {
   border-radius: 16px;
   border: none;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  max-height: 90vh;
 }
 
 .edit-request-modal .modal-header {
-  color: white;
   border-radius: 16px 16px 0 0;
-  padding: 20px 24px;
-  border: none;
+  padding: 10px 20px !important;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .edit-request-modal .modal-title {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 20px;
+  font-size: 17px !important;
   font-weight: 600;
 }
 
 .edit-request-modal .modal-icon {
-  font-size: 24px;
+  font-size: 20px;
 }
 
 .edit-request-modal .modal-body {
-  padding: 28px 24px;
+  padding: 10px 20px !important;
 }
 
 .modal-description {
   color: #666;
-  margin-bottom: 24px;
-  line-height: 1.6;
+  margin-bottom: 8px !important;
+  line-height: 1.35;
+  font-size: 13px !important;
 }
 
 .request-textarea {
-  border-radius: 10px;
-  border: 2px solid #e1e5ee;
-  padding: 12px;
-  font-size: 14px;
+  border-radius: 8px;
+  border: 1.5px solid #e1e5ee;
+  padding: 8px 10px;
+  font-size: 13px;
   transition: all 0.3s ease;
 }
 
@@ -1572,7 +1579,7 @@
 
 .employee-review-alert.rejected {
   border: 1px solid #E1E1E1;
-  background-color: #ffe9eb;
+  background-color: #ffffff;
 }
 
 .employee-review-alert.pending {
@@ -1651,6 +1658,10 @@
 .employee-review-alert-hint {
   font-size: 13px;
   color: #64748b;
+}
+
+.employee-review-alert-action {
+  align-self: flex-end;
 }
 
 .btn-employee-resubmit-cta {

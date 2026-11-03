@@ -42,6 +42,13 @@ import CustomDropdown from "../../Common/CustomDropdown";
 import "../../Common/CustomDropdown.css";
 import MissingProfileBanner from "./MissingProfileBanner";
 import TaskBanner from "../../Banner/TaskBanner";
+import BirthdayCelebration from "../BirthdayCelebration/BirthdayCelebration";
+
+import {
+  shouldTriggerCelebration,
+  markCelebrationPlayedInSession,
+  resetCelebrationForTesting,
+} from "../BirthdayCelebration/birthdayCelebrationHelper";
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // HELPER FUNCTIONS
@@ -203,34 +210,72 @@ const calculateWorkingDaysFromHistory = (history, currentStatus, holidaysList = 
 const groupTasksWithHistory = (items, holidaysList = [], leavesList = []) => {
   if (!Array.isArray(items) || items.length === 0) return [];
 
-  const groups = new Map();
-
-  items.forEach((item) => {
-    const rawTitle = (item.taskTitle || item.displayTitle || item.name || item.title || item.phase || "").trim();
-    const titleKey = rawTitle.toLowerCase();
-    const refKey = item.referenceId ? String(item.referenceId) : null;
-    const taskIdKey = (item.task_id && item.task_id !== "standalone")
-      ? String(item.task_id)
-      : (item.task?._id ? String(item.task._id) : null);
-
-    let groupKey = titleKey;
-    if (!groupKey && refKey) groupKey = `ref_${refKey}`;
-    if (!groupKey && taskIdKey) groupKey = `task_${taskIdKey}`;
-    if (!groupKey) groupKey = `item_${item._id || Math.random()}`;
-
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, []);
+  // Connected Components / Union-Find to group related updates across days
+  const n = items.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (i) => {
+    let root = i;
+    while (root !== parent[root]) root = parent[root];
+    let curr = i;
+    while (curr !== root) {
+      let nxt = parent[curr];
+      parent[curr] = root;
+      curr = nxt;
     }
-    groups.get(groupKey).push(item);
-  });
+    return root;
+  };
+  const union = (i, j) => {
+    const rootI = find(i);
+    const rootJ = find(j);
+    if (rootI !== rootJ) parent[rootI] = rootJ;
+  };
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = items[i];
+      const b = items[j];
+
+      const aId = a._id ? String(a._id) : null;
+      const bId = b._id ? String(b._id) : null;
+      const aWorkRef = a.workUpdateRefId ? String(a.workUpdateRefId) : null;
+      const bWorkRef = b.workUpdateRefId ? String(b.workUpdateRefId) : null;
+      const aRef = a.referenceId ? String(a.referenceId) : null;
+      const bRef = b.referenceId ? String(b.referenceId) : null;
+      const aTaskId = (a.task_id && a.task_id !== "standalone") ? String(a.task_id) : (a.task?._id ? String(a.task._id) : null);
+      const bTaskId = (b.task_id && b.task_id !== "standalone") ? String(b.task_id) : (b.task?._id ? String(b.task._id) : null);
+      const aTitle = (a.taskTitle || a.displayTitle || a.name || a.title || a.phase || "").trim().toLowerCase();
+      const bTitle = (b.taskTitle || b.displayTitle || b.name || b.title || b.phase || "").trim().toLowerCase();
+
+      let connected = false;
+      // 1. workUpdateRefId links across days
+      if (aWorkRef && bId && aWorkRef === bId) connected = true;
+      else if (bWorkRef && aId && bWorkRef === aId) connected = true;
+      else if (aWorkRef && bWorkRef && aWorkRef === bWorkRef) connected = true;
+      // 2. Phase reference IDs
+      else if (aRef && bRef && aRef === bRef) connected = true;
+      // 3. Same formal task phase
+      else if (aTaskId && bTaskId && aTaskId === bTaskId && ((aRef && bRef && aRef === bRef) || (!aRef && !bRef))) connected = true;
+      // 4. Same title within standalone updates
+      else if (aTitle && bTitle && aTitle === bTitle && (!aTaskId || aTaskId === "standalone") && (!bTaskId || bTaskId === "standalone")) connected = true;
+
+      if (connected) union(i, j);
+    }
+  }
+
+  const clusters = new Map();
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(items[i]);
+  }
 
   const grouped = [];
-
-  groups.forEach((groupItems) => {
+  clusters.forEach((groupItems) => {
     const sorted = [...groupItems].sort((a, b) => {
       const dateA = new Date(a.date || a.completionDate || a.updateDate || a.createdAt || 0).getTime();
       const dateB = new Date(b.date || b.completionDate || b.updateDate || b.createdAt || 0).getTime();
-      return dateB - dateA;
+      if (dateA !== dateB) return dateB - dateA;
+      return String(b._id || "").localeCompare(String(a._id || ""));
     });
 
     const latest = sorted[0];
@@ -238,13 +283,19 @@ const groupTasksWithHistory = (items, holidaysList = [], leavesList = []) => {
     const normKey = normalizeStatusKey(latestStatus);
     const calculatedDays = calculateWorkingDaysFromHistory(sorted, latestStatus, holidaysList, leavesList);
 
+    const effectiveWorkingDays = (latest.workingDays !== undefined && latest.workingDays !== null && Number(latest.workingDays) > 0)
+      ? Number(latest.workingDays)
+      : (latest.phaseWorkingDays !== undefined && latest.phaseWorkingDays !== null && Number(latest.phaseWorkingDays) > 0)
+        ? Number(latest.phaseWorkingDays)
+        : (calculatedDays || 1);
+
     grouped.push({
       ...latest,
       taskTitle: latest.taskTitle || latest.displayTitle || latest.name || latest.title || "Untitled Task",
       displayTitle: latest.taskTitle || latest.displayTitle || latest.name || latest.title || "Untitled Task",
       latestDate: latest.date || latest.completionDate || latest.updateDate || latest.createdAt,
       latestStatus: latestStatus,
-      workingDays: calculatedDays,
+      workingDays: effectiveWorkingDays,
       isCompleted: normKey === "completed",
       isInProcess: normKey === "inprocess",
       history: sorted,
@@ -293,27 +344,37 @@ const getPhaseWorkingDays = (phase) => {
   return history.length > 0 ? 1 : 0;
 };
 
+const getLocalDateString = (val) => {
+  if (!val) return null;
+  if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
+    return val.trim();
+  }
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return null;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const getProjectTotalWorkingDays = (items) => {
   if (!Array.isArray(items) || items.length === 0) return 0;
   const distinctDates = new Set();
   items.forEach((item) => {
-    const records = Array.isArray(item?.history) && item.history.length > 0 ? item.history : [item];
+    const records = Array.isArray(item?.history) && item.history.length > 0 ? item.history : (item ? [item] : []);
     records.forEach((h) => {
-      const rawStatus = (h?.status || h?.phaseStatus || item?.latestStatus || "").toLowerCase().replace(/[-_\s]/g, "");
-      if (rawStatus !== "hold" && rawStatus !== "onhold" && rawStatus !== "pending") {
-        const dVal = h?.date || h?.completionDate || h?.updateDate || h?.createdAt || item?.latestDate;
-        if (dVal) {
-          const dObj = new Date(dVal);
-          if (!isNaN(dObj.getTime())) {
-            distinctDates.add(dObj.toISOString().split("T")[0]);
-          }
+      const rawStatus = (h?.status || h?.phaseStatus || item?.latestStatus || item?.status || "").toLowerCase().replace(/[-_\s]/g, "");
+      if (rawStatus !== "hold" && rawStatus !== "onhold") {
+        const dVal = h?.date || h?.completionDate || h?.updateDate || h?.createdAt || item?.latestDate || item?.date;
+        const key = getLocalDateString(dVal);
+        if (key) {
+          distinctDates.add(key);
         }
       }
     });
   });
 
-  if (distinctDates.size > 0) return distinctDates.size;
-  return items.length > 0 ? 1 : 0;
+  return distinctDates.size;
 };
 
 
@@ -351,6 +412,7 @@ const EmployeeDashboard = () => {
 
   // â”€â”€ BIRTHDAY & WISH STATES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [showBirthdayAnimation, setShowBirthdayAnimation] = useState(false);
+  const [showMascotModal, setShowMascotModal] = useState(false);
   const [todayBirthdays, setTodayBirthdays] = useState([]);
   const [sentWishes, setSentWishes] = useState([]);
   const [receivedWishes, setReceivedWishes] = useState([]);
@@ -383,11 +445,17 @@ const EmployeeDashboard = () => {
   const permissionDropdownRef = useRef(null);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
 
+  // ─── MORNING INFORM HALF-DAY CONFIRMATION STATES ───
+  const [showHalfDayConfirmModal, setShowHalfDayConfirmModal] = useState(false);
+  const [halfDayConfirmLoading, setHalfDayConfirmLoading] = useState(false);
+  const [pendingMorningInformData, setPendingMorningInformData] = useState(null);
+
   // ===== IP VALIDATION START =====
   const [showIPReasonModal, setShowIPReasonModal] = useState(false);
   const [ipReason, setIpReason] = useState("");
   const [pendingLateReason, setPendingLateReason] = useState("");
   const [isCheckoutIP, setIsCheckoutIP] = useState(false);
+  const [isHalfDayConfirmIP, setIsHalfDayConfirmIP] = useState(false);
   // ===== IP VALIDATION END =====
 
   // â”€â”€ NON-WORKING DAY STATES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -406,8 +474,7 @@ const EmployeeDashboard = () => {
   const canReCheckIn =
     (!!todayAttendance?.checkIn1 || !!todayAttendance?.checkInTime) &&
     (!!todayAttendance?.checkOut1 || !!todayAttendance?.checkOutTime) &&
-    !todayAttendance?.checkIn2 &&
-    permissionTypeToday === "AFTERNOON";
+    !todayAttendance?.checkIn2;
 
   const isCurrentlyCheckedIn =
     (
@@ -931,7 +998,11 @@ const EmployeeDashboard = () => {
     const fetchDashboardData = async () => {
       try {
         const empRes = await portalInstance.get("/users/get-details");
-        if (empRes.data.success) setEmployee(empRes.data.data);
+        let currentEmp = null;
+        if (empRes.data.success) {
+          currentEmp = empRes.data.data;
+          setEmployee(currentEmp);
+        }
 
         const pcRes = await portalInstance.get("/data/completion");
         if (pcRes.data.success) {
@@ -939,26 +1010,45 @@ const EmployeeDashboard = () => {
           setProfileCompletion(completion);
           setIsNewEmployee(completion === 0);
         }
-        fetchTodayBirthdays();
+        const bdays = await fetchTodayBirthdays();
         fetchSentWishes();
         fetchReceivedWishes();
+
+        // 🎂 Trigger birthday celebration animation on login if employee has birthday today
+        if (shouldTriggerCelebration(currentEmp, bdays, loggedInUserId)) {
+          setShowBirthdayAnimation(true);
+          markCelebrationPlayedInSession(currentEmp, loggedInUserId);
+        }
       } catch (error) {
         console.error("Dashboard fetch error:", error);
       }
     };
     fetchDashboardData();
-  }, []);
+  }, [loggedInUserId]);
 
   const fetchTodayBirthdays = async () => {
     try {
       const res = await portalInstance.get("/users/today-birthdays");
       if (res.data?.success) {
-        setTodayBirthdays(res.data.data || []);
+        const list = res.data.data || [];
+        setTodayBirthdays(list);
+        return list;
       }
     } catch (err) {
       console.error("Fetch today birthdays error:", err);
     }
+    return [];
   };
+
+  // Watch for employee & todayBirthdays updates to trigger animation if not already fired
+  useEffect(() => {
+    if (employee || (todayBirthdays && todayBirthdays.length > 0)) {
+      if (shouldTriggerCelebration(employee, todayBirthdays, loggedInUserId)) {
+        setShowBirthdayAnimation(true);
+        markCelebrationPlayedInSession(employee, loggedInUserId);
+      }
+    }
+  }, [employee, todayBirthdays, loggedInUserId]);
 
   const fetchSentWishes = async () => {
     try {
@@ -1049,21 +1139,23 @@ const EmployeeDashboard = () => {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // BIRTHDAY CHECK
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ─── BIRTHDAY CHECK (RUNS ON EVERY LOGIN) ─────────────────────────────────
+
+
+  // Window helper for development / previewing
   useEffect(() => {
-    if (!employee?.dob) return;
-    const today = new Date();
-    const dob = new Date(employee.dob);
-    const isBirthday =
-      today.getDate() === dob.getDate() &&
-      today.getMonth() === dob.getMonth();
-    if (isBirthday) {
-      const alreadyShown = sessionStorage.getItem("birthdayAnimationShown");
-      if (!alreadyShown) {
-        setShowBirthdayAnimation(true);
-        sessionStorage.setItem("birthdayAnimationShown", "true");
-      }
-    }
-  }, [employee]);
+    window.__previewBirthdayAnimation = () => setShowBirthdayAnimation(true);
+    window.__resetBirthdayAnimation = () => {
+      resetCelebrationForTesting();
+      setShowBirthdayAnimation(true);
+    };
+    window.__show3DMascot = () => setShowMascotModal(true);
+    return () => {
+      delete window.__previewBirthdayAnimation;
+      delete window.__resetBirthdayAnimation;
+      delete window.__show3DMascot;
+    };
+  }, []);
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // FETCH PENDING TASKS
@@ -1129,7 +1221,20 @@ const EmployeeDashboard = () => {
       setProjectDetailsLoading(true);
       const res = await portalInstance.get("/creat/tasks/project-details");
       if (res.data.success) {
-        setProjectDetails(res.data.data || []);
+        const rawList = res.data.data || [];
+        const dedupedMap = new Map();
+        rawList.forEach((p) => {
+          const key = `${(p.category || "").trim().toLowerCase()}___${(p.projectName || "").trim().toLowerCase()}`;
+          if (!dedupedMap.has(key)) {
+            dedupedMap.set(key, p);
+          } else {
+            const existing = dedupedMap.get(key);
+            if (p.projectName && /[A-Z]/.test(p.projectName) && !/[A-Z]/.test(existing.projectName)) {
+              existing.projectName = p.projectName;
+            }
+          }
+        });
+        setProjectDetails(Array.from(dedupedMap.values()));
       }
     } catch (err) {
       console.error("Project details fetch error:", err);
@@ -1703,6 +1808,14 @@ const EmployeeDashboard = () => {
         setPendingLateReason(reason);
         setIpReason("");
         setShowIPReasonModal(true);
+      } else if (err?.response?.data?.requiresHalfDayConfirmation) {
+        setPendingMorningInformData({
+          permissionId: err.response.data.permissionId,
+          lateReason: reason,
+          ipReason: ip,
+        });
+        setShowCheckInModal(false);
+        setShowHalfDayConfirmModal(true);
       } else {
         console.error("Dashboard check-in error:", err);
         toast.error(err?.response?.data?.message || "Check-in failed");
@@ -1740,6 +1853,14 @@ const EmployeeDashboard = () => {
         setPendingLateReason(reason);
         setIpReason("");
         setShowIPReasonModal(true);
+      } else if (err?.response?.data?.requiresHalfDayConfirmation) {
+        setPendingMorningInformData({
+          permissionId: err.response.data.permissionId,
+          lateReason: reason,
+          ipReason: ip,
+        });
+        setShowCheckInModal(false);
+        setShowHalfDayConfirmModal(true);
       } else {
         toast.error(err?.response?.data?.message || "Check-in failed");
       }
@@ -1805,6 +1926,10 @@ const EmployeeDashboard = () => {
       toast.error(nonWorkingReason);
       return;
     }
+    if (hasInformPermission || todayAttendance?.hasPermission) {
+      toast.warning("A permission request has already been submitted for today. Informed permission is not allowed.");
+      return;
+    }
     setPermissionType(type);
     setPermissionData({
       fromTime: "",
@@ -1851,9 +1976,31 @@ const EmployeeDashboard = () => {
       return;
     }
 
+    const durationMinutes = moment(toDate).diff(moment(fromDate), "minutes");
+    const isMorningInform = permissionData.permissionType === "MORNING" || (permissionType && permissionType.toLowerCase().includes("morning"));
+
+    if (durationMinutes > 120) {
+      if (isMorningInform) {
+        setPendingMorningInformData({
+          from: fromDate,
+          to: toDate,
+          reason: reason.trim(),
+          type: permissionType,
+          informedVia: "Mobile Call",
+          permissionType: "MORNING",
+          wasOpenedFromInformModal: true,
+        });
+        setShowPermissionModal(false);
+        setShowHalfDayConfirmModal(true);
+        return;
+      }
+      toast.error("Permission is allowed for a maximum of 2 hours only. If you require more than 2 hours, please apply for Half-Day Leave instead of Permission.");
+      return;
+    }
+
     try {
       setActionLoading(true);
-      await portalInstance.post("/portal/attendance/inform-permission", {
+      const res = await portalInstance.post("/portal/attendance/inform-permission", {
         from: fromDate,
         to: toDate,
         reason: reason.trim(),
@@ -1861,17 +2008,117 @@ const EmployeeDashboard = () => {
         informedVia: "Mobile Call",
         permissionType: permissionData.permissionType,
       });
+
+      if (res.data?.requiresHalfDayConfirmation) {
+        setPendingMorningInformData({
+          from: fromDate,
+          to: toDate,
+          reason: reason.trim(),
+          type: permissionType,
+          informedVia: "Mobile Call",
+          permissionType: "MORNING",
+          permissionId: res.data.permissionId,
+          wasOpenedFromInformModal: true,
+        });
+        setShowPermissionModal(false);
+        setShowHalfDayConfirmModal(true);
+        return;
+      }
+
       toast.success("Inform permission submitted successfully");
       setHasInformPermission(true);
       setShowPermissionModal(false);
       setPermissionData({ fromTime: "", toTime: "", reason: "", informedVia: "Mobile Call", permissionType: "" });
       initAttendance();
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to submit permission request"
-      );
+      if (err?.response?.data?.requiresHalfDayConfirmation) {
+        setPendingMorningInformData({
+          from: fromDate,
+          to: toDate,
+          reason: reason.trim(),
+          type: permissionType,
+          informedVia: "Mobile Call",
+          permissionType: "MORNING",
+          permissionId: err.response.data.permissionId,
+          wasOpenedFromInformModal: true,
+        });
+        setShowPermissionModal(false);
+        setShowHalfDayConfirmModal(true);
+      } else {
+        toast.error(
+          err?.response?.data?.message || "Failed to submit permission request"
+        );
+      }
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleConfirmHalfDayCheckIn = async (customIpReason = "") => {
+    if (halfDayConfirmLoading) return;
+    setHalfDayConfirmLoading(true);
+    try {
+      const activeIpReason = (typeof customIpReason === "string" && customIpReason.trim())
+        ? customIpReason.trim()
+        : (pendingMorningInformData?.ipReason || ipReason || "");
+
+      const payload = {
+        permissionId: pendingMorningInformData?.permissionId,
+        permissionData: pendingMorningInformData?.from ? pendingMorningInformData : undefined,
+        lateReason: pendingMorningInformData?.lateReason || "",
+        ipReason: activeIpReason,
+        confirmHalfDay: true,
+      };
+
+      const res = await portalInstance.post(
+        "/portal/attendance/confirm-morning-inform-checkin",
+        payload
+      );
+
+      const data = res.data.data;
+      setTodayAttendance(data);
+      const now = new Date();
+      sessionStorage.setItem("loginTime", now.toISOString());
+      setLoginTime(now);
+      setShowHalfDayConfirmModal(false);
+      setShowPermissionModal(false);
+      setShowCheckInModal(false);
+      setShowIPReasonModal(false);
+      setIsHalfDayConfirmIP(false);
+      setPendingMorningInformData(null);
+      setHasInformPermission(true);
+
+      const checkInTimeStr = data?.checkIn1 || data?.checkInTime || data?.checkIn2;
+      toast.success(
+        "Checked in at " + (checkInTimeStr ? formatAttendanceTime(checkInTimeStr) : "now") + " (Half-day leave deducted)"
+      );
+
+      // Refresh attendance state
+      initAttendance();
+    } catch (err) {
+      if (err?.response?.data?.requireIPReason) {
+        setShowHalfDayConfirmModal(false);
+        setIsHalfDayConfirmIP(true);
+        setIpReason("");
+        setShowIPReasonModal(true);
+      } else {
+        console.error("Morning inform half-day confirmation error:", err);
+        toast.error(
+          err?.response?.data?.message || "Failed to process half-day check-in"
+        );
+      }
+    } finally {
+      setHalfDayConfirmLoading(false);
+    }
+  };
+
+  const handleCancelHalfDayCheckIn = () => {
+    if (halfDayConfirmLoading) return;
+    const shouldReopenInformModal = pendingMorningInformData?.wasOpenedFromInformModal || pendingMorningInformData?.from;
+    setShowHalfDayConfirmModal(false);
+    setPendingMorningInformData(null);
+    if (shouldReopenInformModal) {
+      setShowPermissionModal(true);
     }
   };
 
@@ -2125,6 +2372,12 @@ const EmployeeDashboard = () => {
   };
 
   // (Derived state declarations moved to component mount level for scope sharing)
+  const birthdayEmployeeName =
+    employee?.name ||
+    employee?.empId?.name ||
+    sessionData?.name ||
+    sessionData?.user?.name ||
+    "Team Member";
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // RENDER
@@ -2137,11 +2390,6 @@ const EmployeeDashboard = () => {
         <div className="employeedashboard-wrapper position-relative">
           <Container fluid>
 
-            {showBirthdayAnimation && (
-              <div className="birthday-confetti-dashboard">
-                <Lottie animationData={confettiAnimation} loop />
-              </div>
-            )}
 
             {showPwdBanner && (
               <PasswordExpiryBanner
@@ -3494,6 +3742,52 @@ const EmployeeDashboard = () => {
         </Modal.Body>
       </Modal>
 
+      {/* ─── MORNING INFORM HALF-DAY CONFIRMATION MODAL ─── */}
+      <Modal
+        show={showHalfDayConfirmModal}
+        onHide={handleCancelHalfDayCheckIn}
+        centered
+        className="morning-halfday-confirm-modal"
+      >
+        <Modal.Header closeButton className="border-0 p-0">
+          <Modal.Title className="morning-halfday-modal-title">
+            Half-Day Leave Deduction
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-0">
+          <div className="morning-halfday-modal-content">
+            <p className="morning-halfday-modal-message">
+              Your Morning INFORM permission has reached the half-day threshold. To continue with check-in, half-day leave will be deducted from your leave balance. Do you want to continue?
+            </p>
+          </div>
+          <div className="morning-halfday-modal-footer d-flex justify-content-end gap-2">
+            <button
+              type="button"
+              className="common-modal-btn btn-small-cancel"
+              onClick={handleCancelHalfDayCheckIn}
+              disabled={halfDayConfirmLoading}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="common-modal-btn btn-confirm-success"
+              onClick={handleConfirmHalfDayCheckIn}
+              disabled={halfDayConfirmLoading}
+            >
+              {halfDayConfirmLoading ? (
+                <>
+                  <Spinner as="span" animation="border" size="sm" role="status" className="me-2" />
+                  Processing...
+                </>
+              ) : (
+                "Confirm & Check In"
+              )}
+            </button>
+          </div>
+        </Modal.Body>
+      </Modal>
+
       {/* TASK DETAILS MODAL */}
       {selectedTaskId && (
         <TaskDetailsModal taskId={selectedTaskId} onClose={handleCloseTaskModal} />
@@ -3563,14 +3857,8 @@ const EmployeeDashboard = () => {
               (p) => p.isInProcess || normalizeStatusKey(p.latestStatus || p.status) === "inprocess"
             );
             const inProcessCount = inProcessPhases.length;
-            const inProcessDays = inProcessPhases.reduce(
-              (sum, p) => sum + (p.workingDays || 0),
-              0
-            );
-            const totalWorkingDays = projectPhases.reduce(
-              (sum, p) => sum + (p.workingDays || 0),
-              0
-            );
+            const inProcessDays = getProjectTotalWorkingDays(inProcessPhases);
+            const totalWorkingDays = getProjectTotalWorkingDays(projectPhases);
 
             return (
               <div className="d-flex justify-content-between align-items-center w-100 mt-2" style={{ paddingBottom: "10px", flexWrap: "wrap", gap: "12px" }}>
@@ -3718,7 +4006,7 @@ const EmployeeDashboard = () => {
                           className="dwu-work-card__field dwu-field-working-days"
                           style={{ width: "95px", flexShrink: 0, textAlign: "left" }}
                         >
-                          <span className="dwu-work-card__label dwu-label-hide-mobile">Overall Days</span>
+                          <span className="dwu-work-card__label dwu-label-hide-mobile">Working Days</span>
                           <span
                             className="dwu-work-card__value"
                             style={{
@@ -3774,12 +4062,12 @@ const EmployeeDashboard = () => {
                               </div>
 
                               <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden", background: "#ffffff" }}>
-                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                                <table className="dwu-status-history-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                                   <thead>
                                     <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#475569", fontWeight: "600" }}>
-                                      <th style={{ padding: "10px 14px", textAlign: "left", width: "95px" }}>Date</th>
-                                      <th style={{ padding: "10px 14px", textAlign: "left", width: "125px" }}>Status</th>
-                                      <th style={{ padding: "10px 14px", textAlign: "left" }}>Work Summary</th>
+                                      <th className="dwu-history-th-date" style={{ padding: "10px 14px", textAlign: "left", width: "95px" }}>Date</th>
+                                      <th className="dwu-history-th-status" style={{ padding: "10px 14px", textAlign: "left", width: "125px" }}>Status</th>
+                                      <th className="dwu-history-th-summary" style={{ padding: "10px 14px", textAlign: "left" }}>Work Summary</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -3795,15 +4083,16 @@ const EmployeeDashboard = () => {
                                       return (
                                         <tr
                                           key={hIdx}
+                                          className="dwu-history-tr"
                                           style={{
                                             borderBottom: hIdx === phase.history.length - 1 ? "none" : "1px solid #f1f5f9",
                                             background: hIdx % 2 === 0 ? "#ffffff" : "#fcfdfe"
                                           }}
                                         >
-                                          <td style={{ padding: "12px 14px", verticalAlign: "top", fontWeight: "500", color: "#334155" }}>
+                                          <td className="dwu-history-td-date" style={{ padding: "12px 14px", verticalAlign: "top", fontWeight: "500", color: "#334155" }}>
                                             {dateStr}
                                           </td>
-                                          <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
+                                          <td className="dwu-history-td-status" style={{ padding: "12px 14px", verticalAlign: "top" }}>
                                             <span
                                               className={`dwu-admin__statusBadge dwu-admin__statusBadge--${hKey}`}
                                               style={{
@@ -3820,7 +4109,17 @@ const EmployeeDashboard = () => {
                                               {hLocked && <span role="img" aria-label="locked" style={{ fontSize: "11px", lineHeight: 1 }}></span>}
                                             </span>
                                           </td>
-                                          <td style={{ padding: "12px 14px", verticalAlign: "top", color: "#334155", lineHeight: "1.6" }}>
+                                          <td className="dwu-history-td-summary" style={{ padding: "12px 14px", verticalAlign: "top", color: "#334155", lineHeight: "1.6" }}>
+                                            {(() => {
+                                              const mainTitle = (phase.taskTitle || phase.displayTitle || phase.name || phase.title || "").trim();
+                                              const hTitle = (h.title || h.taskTitle || h.displayTitle || h.name || h.phase || "").trim();
+                                              const isTitleChanged = Boolean(hTitle && mainTitle && hTitle.toLowerCase() !== mainTitle.toLowerCase());
+                                              return isTitleChanged ? (
+                                                <div style={{ fontWeight: "600", color: "#1e293b", marginBottom: "4px", fontSize: "13px" }}>
+                                                  {hTitle}
+                                                </div>
+                                              ) : null;
+                                            })()}
                                             <div style={{ wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "pre-wrap", fontSize: "13px" }}>
                                               {h.note || h.description || h.details || "—"}
                                             </div>
@@ -3902,6 +4201,10 @@ const EmployeeDashboard = () => {
           setShowIPReasonModal(false);
           setIpReason("");
           setIsCheckoutIP(false);
+          if (isHalfDayConfirmIP) {
+            setIsHalfDayConfirmIP(false);
+            setShowHalfDayConfirmModal(true);
+          }
         }}
         centered
         className="checkin-modal"
@@ -3933,6 +4236,10 @@ const EmployeeDashboard = () => {
                 setShowIPReasonModal(false);
                 setIpReason("");
                 setIsCheckoutIP(false);
+                if (isHalfDayConfirmIP) {
+                  setIsHalfDayConfirmIP(false);
+                  setShowHalfDayConfirmModal(true);
+                }
               }}
             >
               Cancel
@@ -3950,13 +4257,16 @@ const EmployeeDashboard = () => {
                 if (isCheckoutIP) {
                   setIsCheckoutIP(false);
                   handleCheckOut(reason);
+                } else if (isHalfDayConfirmIP) {
+                  setIsHalfDayConfirmIP(false);
+                  handleConfirmHalfDayCheckIn(reason);
                 } else {
                   handleCheckIn(pendingLateReason, reason);
                 }
               }}
-              disabled={actionLoading || checkInLoading}
+              disabled={actionLoading || checkInLoading || halfDayConfirmLoading}
             >
-              {actionLoading || checkInLoading ? (isCheckoutIP ? "Checking Out..." : "Checking In...") : (isCheckoutIP ? "Check-out" : "Check-in")}
+              {actionLoading || checkInLoading || halfDayConfirmLoading ? (isCheckoutIP ? "Checking Out..." : "Checking In...") : (isCheckoutIP ? "Check-out" : "Check-in")}
             </button>
           </div>
         </Modal.Body>
@@ -4034,6 +4344,14 @@ const EmployeeDashboard = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* 🎂 CINEMATIC BIRTHDAY CELEBRATION ANIMATION OVERLAY 🎂 */}
+      {showBirthdayAnimation && (
+        <BirthdayCelebration
+          employeeName={birthdayEmployeeName}
+          onComplete={() => setShowBirthdayAnimation(false)}
+        />
+      )}
 
       <ToastContainer position="top-right" autoClose={3000} />
     </>

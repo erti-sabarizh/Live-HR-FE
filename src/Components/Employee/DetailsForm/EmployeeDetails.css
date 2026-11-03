@@ -871,7 +871,6 @@
 
   .employeedetails-form-card {
     padding: 20px;
-    border-radius: 12px;
   }
 
   .employeedetails-profile-header {
@@ -1405,7 +1404,7 @@ html {
   border-radius: 14px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .employeedetails-input-error {
@@ -2380,4 +2379,440 @@ html {
   height: 100%;
   z-index: 2;
   opacity: 0;
+}
+
+/* ================= 7-STEP ONBOARDING WIZARD STYLES ================= */
+.onboarding-wizard-container {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.onboarding-wizard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.onboarding-wizard-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.onboarding-wizard-subtitle {
+  font-size: 13px;
+  color: #64748b;
+  margin: 4px 0 0 0;
+}
+
+.onboarding-wizard-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #ffffff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.legend-item.legend-item-complete {
+  color: #059669;
+}
+
+.legend-item.legend-item-partial {
+  color: #d97706;
+}
+
+.legend-item.legend-item-incomplete {
+  color: #dc2626;
+}
+
+/* Specific legend dot to guarantee in-flow display & avoid CSS collision */
+.legend-dot {
+  position: static !important;
+  display: inline-block !important;
+  width: 9px !important;
+  height: 9px !important;
+  border-radius: 50% !important;
+  flex-shrink: 0 !important;
+  transform: none !important;
+  margin: 0 !important;
+}
+
+.legend-dot.legend-dot-complete {
+  background-color: #10b981 !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+}
+
+.legend-dot.legend-dot-partial {
+  background-color: #f59e0b !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+}
+
+.legend-dot.legend-dot-incomplete {
+  background-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
+}
+
+.status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.status-complete,
+.status-dot.status-complete {
+  background-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+}
+
+.status-partial,
+.status-dot.status-partial {
+  background-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+}
+
+.status-incomplete,
+.status-dot.status-incomplete {
+  background-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
+}
+
+/* ================= PROGRESS TIMELINE STEPPER (NO CARDS, CONNECTING LINE) ================= */
+.onboarding-stepper-container {
+  position: relative;
+  width: 100%;
+  padding: 16px 24px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+
+/* Background connecting line spanning from center of circle 1 to circle 7 */
+.onboarding-stepper-progress-track {
+  position: absolute;
+  top: 50%;
+  left: 44px;
+  right: 44px;
+  height: 3.5px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+/* Animated active blue progress line connecting steps up to activeStep */
+.onboarding-stepper-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  border-radius: 4px;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.4);
+}
+
+/* Stepper container holding the 7 circle buttons */
+.onboarding-stepper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  z-index: 2;
+}
+
+/* Clean reset for step buttons - no card borders, no backgrounds */
+.onboarding-step-tab {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  cursor: pointer;
+  outline: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: unset !important;
+  min-height: unset !important;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.onboarding-step-tab:hover {
+  background: transparent !important;
+  transform: scale(1.1);
+}
+
+/* Numbered Circle 1 to 7 */
+.step-circle {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 2.5px solid #cbd5e1;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.step-number {
+  line-height: 1;
+  font-size: 15px;
+  font-weight: 700;
+  color: inherit;
+}
+
+/* Passed steps (visited / connected) */
+.onboarding-step-tab.passed .step-circle {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+
+/* Active step */
+.onboarding-step-tab.active .step-circle {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.22), 0 4px 12px rgba(37, 99, 235, 0.35);
+  transform: scale(1.12);
+}
+
+/* Small completion status indicator badge on the circle */
+.step-circle .step-status-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.step-circle .status-complete {
+  background-color: #10b981;
+}
+
+.step-circle .status-partial {
+  background-color: #f59e0b;
+}
+
+.step-circle .status-incomplete {
+  background-color: #ef4444;
+}
+
+/* Step content wrapper */
+.onboarding-step-content {
+  position: relative;
+  z-index: 10;
+  animation: onboardingFadeIn 0.25s ease-out;
+}
+
+@keyframes onboardingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-step-header {
+  padding-bottom: 12px;
+  border-bottom: 1.5px solid #f1f5f9;
+}
+
+/* Subsection cards (Step 6) */
+.onboarding-subsection-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.onboarding-subsection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.onboarding-subsection-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Step 7: Avatar Upload Card */
+.onboarding-avatar-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 20px;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  border-radius: 14px;
+  border: 1.5px dashed #cbd5e1;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.onboarding-avatar-preview-wrapper {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 4px solid #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.onboarding-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.onboarding-avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+}
+
+/* Bottom Wizard Footer Navigation */
+.onboarding-wizard-footer {
+  position: relative;
+  z-index: 1;
+  background: #f8fafc;
+  padding: 16px 20px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  margin-top: 32px;
+}
+
+/* Siblings Section & Relationship Dropdown Z-Index Stacking */
+.employeedetails-siblings-section,
+.employeedetails-siblings-list {
+  position: relative;
+  overflow: visible !important;
+}
+
+.employeedetails-sibling-item {
+  position: relative;
+  overflow: visible !important;
+  background: #ffffff;
+}
+
+.employeedetails-sibling-item .custom-dropdown-container {
+  position: relative;
+  z-index: 50;
+}
+
+.employeedetails-sibling-item .custom-dropdown-container.dropdown-open {
+  z-index: 99999 !important;
+}
+
+.employeedetails-sibling-item .custom-dropdown-menu {
+  z-index: 999999 !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .onboarding-stepper-progress-track {
+    left: 36px;
+    right: 36px;
+  }
+}
+
+@media (max-width: 768px) {
+  .onboarding-wizard-container {
+    padding: 16px;
+  }
+  .onboarding-wizard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .onboarding-wizard-legend {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .onboarding-stepper-container {
+    padding: 12px 14px;
+  }
+  .onboarding-stepper-progress-track {
+    left: 24px;
+    right: 24px;
+    height: 3px;
+  }
+  .step-circle {
+    width: 34px;
+    height: 34px;
+    font-size: 13px;
+    border-width: 2px;
+  }
+  .step-number {
+    font-size: 13px;
+  }
+  .onboarding-wizard-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .onboarding-wizard-footer > * {
+    width: 100%;
+    justify-content: center;
+  }
 }

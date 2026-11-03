@@ -782,17 +782,17 @@ const AdminAttendance = () => {
                     <div className="admin-leave-info-row">
                       <div className="admin-leave-label">Check-in Time</div>
                       <div className="admin-leave-value">
-                        {formatTime(selectedPermission.checkIn1)}
+                        {formatTime(selectedPermission.checkIn1 || selectedPermission.checkInTime || selectedPermission.login)}
                       </div>
                     </div>
                   )}
 
-                  {selectedPermission.permissionDetails.permissionType === "AFTERNOON" && (
+                  {(selectedPermission.permissionDetails.permissionType === "AFTERNOON" || selectedPermission.permissionDetails.permissionType === "Out & Return" || selectedPermission.permissionDetails.status === "INFORMED" || (!["MORNING", "EVENING"].includes(selectedPermission.permissionDetails.permissionType))) && (
                     <>
                       <div className="admin-leave-info-row">
                         <div className="admin-leave-label">Check-out Time</div>
                         <div className="admin-leave-value">
-                          {formatTime(selectedPermission.checkOut1 || selectedPermission.logout)}
+                          {formatTime(selectedPermission.checkOut1 || selectedPermission.checkOutTime || selectedPermission.logout)}
                         </div>
                       </div>
                       <div className="admin-leave-info-row">
@@ -808,10 +808,60 @@ const AdminAttendance = () => {
                     <div className="admin-leave-info-row">
                       <div className="admin-leave-label">Check-out Time</div>
                       <div className="admin-leave-value">
-                        {formatTime(selectedPermission.checkOut2 || selectedPermission.checkOut1 || selectedPermission.logout)}
+                        {formatTime(selectedPermission.checkOut2 || selectedPermission.checkOut1 || selectedPermission.checkOutTime || selectedPermission.logout)}
                       </div>
                     </div>
                   )}
+
+                  {/* Actual Time Used and Extra/Excess Time Used */}
+                  {(() => {
+                    const checkoutDateVal = selectedPermission.checkOut1 || selectedPermission.checkOutTime || selectedPermission.logout;
+                    const checkinDateVal = selectedPermission.checkIn2;
+
+                    let actualDurationMinutes = selectedPermission.actualDurationMinutes || selectedPermission.permissionDetails?.actualDurationMinutes || 0;
+                    if (!actualDurationMinutes && checkoutDateVal && checkinDateVal) {
+                      actualDurationMinutes = Math.max(0, Math.round((new Date(checkinDateVal) - new Date(checkoutDateVal)) / 60000));
+                    }
+
+                    let excessDurationMinutes = selectedPermission.excessDurationMinutes || selectedPermission.permissionDetails?.excessDurationMinutes || 0;
+                    if (!excessDurationMinutes && actualDurationMinutes > 0) {
+                      const reqMins = selectedPermission.permissionMinutes || 120;
+                      if (actualDurationMinutes > reqMins) {
+                        excessDurationMinutes = actualDurationMinutes - reqMins;
+                      }
+                    }
+
+                    return (
+                      <>
+                        {actualDurationMinutes > 0 && (
+                          <div className="admin-leave-info-row">
+                            <div className="admin-leave-label">Actual Time Used</div>
+                            <div
+                              className="admin-leave-value"
+                              style={{
+                                fontWeight: 600,
+                                color: actualDurationMinutes > 120 ? "#dc2626" : (excessDurationMinutes > 0 ? "#d97706" : "#059669")
+                              }}
+                            >
+                              {actualDurationMinutes} mins {actualDurationMinutes >= 60 ? `(${Math.floor(actualDurationMinutes / 60)}h ${actualDurationMinutes % 60}m)` : ""}
+                            </div>
+                          </div>
+                        )}
+
+                        {excessDurationMinutes > 0 && (
+                          <div className="admin-leave-info-row">
+                            <div className="admin-leave-label">Extra Time Used</div>
+                            <div
+                              className="admin-leave-value"
+                              style={{ fontWeight: 600, color: "#dc2626" }}
+                            >
+                              +{excessDurationMinutes} mins ({excessDurationMinutes >= 60 ? `${Math.floor(excessDurationMinutes / 60)}h ${excessDurationMinutes % 60}m` : `${excessDurationMinutes}m`} excess)
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   <div className="admin-leave-info-row">
                     <div className="admin-leave-label">Detailed Reason</div>

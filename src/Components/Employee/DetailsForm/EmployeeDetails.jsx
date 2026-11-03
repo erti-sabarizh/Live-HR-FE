@@ -123,15 +123,418 @@ const getFieldFriendlyName = (fieldId) => {
     if (fieldId.startsWith("courses.") || fieldId.startsWith("course_")) {
       const match = fieldId.match(/courses\.(\d+)/) || fieldId.match(/course_(\d+)/);
       const idx = match ? parseInt(match[1], 10) + 1 : "";
-      return idx ? `Course Certificate #${idx}` : "Course Certificate";
+      return idx ? `Course Certificate ${idx}` : "Course Certificate";
     }
     if (fieldId.startsWith("professionalCertifications.") || fieldId.startsWith("prof_cert_")) {
       const match = fieldId.match(/professionalCertifications\.(\d+)/) || fieldId.match(/prof_cert_(\d+)/);
       const idx = match ? parseInt(match[1], 10) + 1 : "";
-      return idx ? `Professional Certificate #${idx}` : "Professional Certificate";
+      return idx ? `Professional Certificate ${idx}` : "Professional Certificate";
     }
   }
   return fieldId;
+};
+
+/* ================= PREVIOUS EXPERIENCE HELPERS ================= */
+export const formatSalaryWithCommas = (val) => {
+  if (val === null || val === undefined) return "";
+  const str = String(val);
+  if (!str.trim()) return "";
+  const parts = str.split(".");
+  const intDigits = parts[0].replace(/\D/g, "");
+  if (!intDigits && parts.length === 1) return "";
+  const formattedInt = intDigits ? Number(intDigits).toLocaleString("en-IN") : "0";
+  if (parts.length > 1) {
+    const decDigits = parts[1].replace(/\D/g, "").slice(0, 2);
+    return `${formattedInt}.${decDigits}`;
+  }
+  return formattedInt;
+};
+
+export const calculateExperience = (startDateStr, endDateStr) => {
+  if (!startDateStr || !endDateStr) return "";
+
+  const parseDateParts = (dStr) => {
+    if (!dStr) return null;
+    const cleanStr = String(dStr).split("T")[0];
+    const parts = cleanStr.split("-").map(Number);
+    if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      return { year: parts[0], month: parts[1], day: parts[2] };
+    }
+    const d = new Date(dStr);
+    if (!isNaN(d.getTime())) {
+      return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+    }
+    return null;
+  };
+
+  const start = parseDateParts(startDateStr);
+  const end = parseDateParts(endDateStr);
+
+  if (!start || !end) return "";
+
+  if (
+    end.year < start.year ||
+    (end.year === start.year && end.month < start.month) ||
+    (end.year === start.year && end.month === start.month && end.day < start.day)
+  ) {
+    return "";
+  }
+
+  let years = end.year - start.year;
+  let months = end.month - start.month;
+  let days = end.day - start.day;
+
+  if (days < 0) {
+    months -= 1;
+    const prevMonthDays = new Date(end.year, end.month - 1, 0).getDate();
+    days += prevMonthDays;
+  }
+
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  if (years > 0 && months > 0) {
+    return `${years} ${years === 1 ? "Year" : "Years"} ${months} ${months === 1 ? "Month" : "Months"}`;
+  } else if (years > 0) {
+    return `${years} ${years === 1 ? "Year" : "Years"}`;
+  } else if (months > 0) {
+    return `${months} ${months === 1 ? "Month" : "Months"}`;
+  } else if (days > 0) {
+    return `${days} ${days === 1 ? "Day" : "Days"}`;
+  } else {
+    return "0 Months";
+  }
+};
+
+/* ================= SEARCHABLE YEAR DROPDOWN ================= */
+const SearchableYearDropdown = ({
+  options = [],
+  value = "",
+  onChange,
+  placeholder = "Select Year",
+  disabled = false,
+  error = "",
+  id,
+  className = "",
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(value || "");
+  const [userHasTyped, setUserHasTyped] = useState(false);
+  const [highlightedVal, setHighlightedVal] = useState(value || "");
+
+  const dropdownRef = useRef(null);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+  const itemRefs = useRef({});
+
+  // Sync internal input value with prop value when not actively typing
+  useEffect(() => {
+    if (!userHasTyped) {
+      setInputValue(value || "");
+      setHighlightedVal(value || "");
+    }
+  }, [value, userHasTyped]);
+
+  const allOptions = useMemo(() => {
+    if (value && !options.includes(value)) {
+      return [value, ...options];
+    }
+    return options;
+  }, [options, value]);
+
+  const displayedOptions = useMemo(() => {
+    if (!userHasTyped) return allOptions;
+    const query = String(inputValue || "").trim().toLowerCase();
+    if (!query) return allOptions;
+    return allOptions.filter((opt) => String(opt).toLowerCase().includes(query));
+  }, [allOptions, userHasTyped, inputValue]);
+
+  // Click outside listener
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setUserHasTyped(false);
+        const trimmed = String(inputValue || "").trim();
+        if (allOptions.includes(trimmed)) {
+          if (onChange && trimmed !== value) onChange(trimmed);
+        } else if (trimmed.length === 4 && /^\d{4}$/.test(trimmed)) {
+          if (onChange && trimmed !== value) onChange(trimmed);
+        } else {
+          setInputValue(value || "");
+        }
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [allOptions, inputValue, value, onChange]);
+
+  // Scroll to selected value when dropdown opens
+  useEffect(() => {
+    if (isOpen) {
+      const targetVal = highlightedVal || value;
+      if (targetVal && itemRefs.current[targetVal]) {
+        setTimeout(() => {
+          itemRefs.current[targetVal]?.scrollIntoView({ block: "center" });
+        }, 40);
+      }
+    }
+  }, [isOpen]);
+
+  const handleSelect = (val) => {
+    setInputValue(val);
+    setUserHasTyped(false);
+    setHighlightedVal(val);
+    setIsOpen(false);
+    if (onChange) onChange(val);
+  };
+
+  const handleKeyDown = (e) => {
+    if (disabled) return;
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (isOpen && displayedOptions.length > 0) {
+        const toSelect =
+          displayedOptions.find((opt) => String(opt) === String(highlightedVal)) ||
+          displayedOptions[0];
+        handleSelect(toSelect);
+      } else if (allOptions.includes(inputValue.trim())) {
+        handleSelect(inputValue.trim());
+      }
+      return;
+    }
+
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      setUserHasTyped(false);
+      setInputValue(value || "");
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+        setUserHasTyped(false);
+        return;
+      }
+      const currIdx = displayedOptions.findIndex((opt) => String(opt) === String(highlightedVal));
+      const nextIdx = currIdx < displayedOptions.length - 1 ? currIdx + 1 : 0;
+      const nextVal = displayedOptions[nextIdx];
+      setHighlightedVal(nextVal);
+      itemRefs.current[nextVal]?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+        setUserHasTyped(false);
+        return;
+      }
+      const currIdx = displayedOptions.findIndex((opt) => String(opt) === String(highlightedVal));
+      const prevIdx = currIdx > 0 ? currIdx - 1 : displayedOptions.length - 1;
+      const prevVal = displayedOptions[prevIdx];
+      setHighlightedVal(prevVal);
+      itemRefs.current[prevVal]?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+  };
+
+  return (
+    <div
+      ref={dropdownRef}
+      id={id}
+      className={`searchable-year-dropdown-container ${className}`}
+      style={{
+        position: "relative",
+        width: "100%",
+        zIndex: isOpen ? 99999 : "auto",
+      }}
+    >
+      <div style={{ position: "relative", width: "100%" }}>
+        <input
+          ref={inputRef}
+          type="text"
+          className={`employeedetails-detail-input ${disabled ? "employeedetails-input-locked" : ""} ${error ? "employeedetails-input-error" : ""}`}
+          value={inputValue}
+          placeholder={placeholder}
+          disabled={disabled}
+          readOnly={disabled}
+          autoComplete="off"
+          style={{
+            width: "100%",
+            paddingRight: "34px",
+            borderColor: error ? "#ea3a3d" : isOpen ? "#4f80ff" : "rgba(31, 31, 31, 0.12)",
+            boxShadow: isOpen && !disabled ? "0 0 0 4px rgba(79, 128, 255, 0.15)" : "none",
+            cursor: disabled ? "not-allowed" : "text",
+            background: disabled ? "#f5f5f5" : "#ffffff",
+          }}
+          onClick={() => {
+            if (!disabled) {
+              setIsOpen(true);
+            }
+          }}
+          onFocus={(e) => {
+            if (!disabled) {
+              setIsOpen(true);
+              e.target.select();
+            }
+          }}
+          onChange={(e) => {
+            if (disabled) return;
+            const val = e.target.value;
+            setInputValue(val);
+            setUserHasTyped(true);
+            setIsOpen(true);
+
+            // If it's a complete valid year or range, call onChange directly
+            if (allOptions.includes(val.trim())) {
+              if (onChange) onChange(val.trim());
+            } else if (val.trim().length === 4 && /^\d{4}$/.test(val.trim())) {
+              if (onChange) onChange(val.trim());
+            }
+          }}
+          onKeyDown={handleKeyDown}
+        />
+        <div
+          style={{
+            position: "absolute",
+            right: "10px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            cursor: disabled ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: disabled ? "none" : "auto",
+            padding: "4px",
+          }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!disabled) {
+              if (isOpen) {
+                setIsOpen(false);
+              } else {
+                setUserHasTyped(false);
+                setIsOpen(true);
+                inputRef.current?.focus();
+              }
+            }
+          }}
+        >
+          <svg
+            style={{
+              width: "14px",
+              height: "14px",
+              transition: "transform 0.2s ease",
+              transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+              color: "#77728E",
+            }}
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      </div>
+
+      {isOpen && !disabled && (
+        <div
+          ref={listRef}
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            background: "#ffffff",
+            border: "1px solid rgba(31, 31, 31, 0.15)",
+            borderRadius: "8px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)",
+            zIndex: 99999,
+            maxHeight: "220px",
+            overflowY: "auto",
+            padding: "4px 0",
+          }}
+          onMouseDown={(e) => {
+            // Prevent blur when scrolling or clicking dropdown items
+            e.preventDefault();
+          }}
+        >
+          {displayedOptions.length === 0 ? (
+            <div
+              style={{
+                padding: "12px 14px",
+                fontSize: "13px",
+                color: "#94a3b8",
+                textAlign: "center",
+              }}
+            >
+              No matching year found
+            </div>
+          ) : (
+            displayedOptions.map((opt) => {
+              const isSelected = String(opt) === String(value);
+              const isHighlighted = String(opt) === String(highlightedVal);
+              return (
+                <div
+                  key={opt}
+                  ref={(el) => {
+                    itemRefs.current[opt] = el;
+                  }}
+                  onClick={() => handleSelect(opt)}
+                  style={{
+                    padding: "8px 14px",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    color: isSelected ? "#2563eb" : "#334155",
+                    background: isSelected ? "#eff6ff" : isHighlighted ? "#f1f5f9" : "transparent",
+                    fontWeight: isSelected ? 600 : 400,
+                    transition: "background 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = "#f8fafc";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = isHighlighted ? "#f1f5f9" : "transparent";
+                    }
+                  }}
+                >
+                  <span>{opt}</span>
+                  {isSelected && (
+                    <svg
+                      style={{ width: "14px", height: "14px", color: "#2563eb" }}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const EmployeeDetails = ({ isAdmin = false }) => {
@@ -147,6 +550,8 @@ const EmployeeDetails = ({ isAdmin = false }) => {
   /* ================= STATE ================= */
   const [originalData, setOriginalData] = useState(null);
   const [formData, setFormData] = useState({
+    employeeDetailsId: "",
+    detailsId: "",
     empId: "",
     name: "",
     email: "",
@@ -201,8 +606,35 @@ const EmployeeDetails = ({ isAdmin = false }) => {
   const [showPan, setShowPan] = useState(false);
   const [isFetchingAadhaar, setIsFetchingAadhaar] = useState(false);
   const [isFetchingPan, setIsFetchingPan] = useState(false);
+  const [showAccountNumber, setShowAccountNumber] = useState(false);
+  const [isFetchingAccountNumber, setIsFetchingAccountNumber] = useState(false);
 
   const [educationPath, setEducationPath] = useState("");
+  /* ================= ONBOARDING 7-STEP WIZARD STATE ================= */
+  const ONBOARDING_STEPS = [
+    { id: 1, title: "Personal Details" },
+    { id: 2, title: "Family Details" },
+    { id: 3, title: "Work Details" },
+    { id: 4, title: "Education" },
+    { id: 5, title: "Degree / College Courses" },
+    { id: 6, title: "KYC & Bank Details" },
+    { id: 7, title: "Profile Picture" },
+  ];
+  const [activeStep, setActiveStep] = useState(() => {
+    try {
+      const storedUserId = sessionStorage.getItem("onboarding_user_id");
+      if (storedUserId) {
+        const storedStep = sessionStorage.getItem(`onboarding_step_${storedUserId}`);
+        const parsed = parseInt(storedStep, 10);
+        if (parsed >= 1 && parsed <= 7) return parsed;
+      }
+    } catch (e) {
+      console.error("Error reading stored onboarding step:", e);
+    }
+    return 1;
+  });
+  const [hasPreviousExperience, setHasPreviousExperience] = useState("");
+
   /* ✅ NEW CROP STATE */
   const [showCropModal, setShowCropModal] = useState(false);
   const [imageToCrop, setImageToCrop] = useState(null);
@@ -952,8 +1384,13 @@ const EmployeeDetails = ({ isAdmin = false }) => {
     const expanded = new Set(rawFields);
 
     CATEGORY_DEFINITIONS.forEach((cat) => {
-      const hasTrigger = cat.triggers.some((t) => rawFields.includes(t));
-      if (hasTrigger) {
+      // Only expand full category if the category name itself (or key alias) was explicitly granted
+      const isCategorySelected =
+        rawFields.includes(cat.name) ||
+        (cat.name === "working" && rawFields.includes("work")) ||
+        (cat.name === "kycBank" && (rawFields.includes("kyc") || rawFields.includes("bank")));
+
+      if (isCategorySelected) {
         cat.fields.forEach((f) => expanded.add(f));
         expanded.add(cat.name);
         if (cat.name === "family") expanded.add("siblings");
@@ -1074,7 +1511,8 @@ const EmployeeDetails = ({ isAdmin = false }) => {
 
         setOriginalAccountNumber(currentBank.accountNumber);
 
-        setProfileCompletion(emp.profileCompletion || 0);
+        const comp = Number(emp.profileCompletion || 0);
+        setProfileCompletion(comp);
         setEducationPath(emp.educationPath || (emp.school12 ? "12th" : ""));
         if (emp.marks12 && parseInt(emp.marks12) > 600) {
           setMarks12Total(1200);
@@ -1084,8 +1522,28 @@ const EmployeeDetails = ({ isAdmin = false }) => {
         setFormData((prev) => ({
           ...prev,
           ...normalizedEmp,
-          profileCompletion: emp.profileCompletion || 0
+          profileCompletion: comp,
         }));
+
+        // Immediately synchronize latest profile completion with sessionStorage and user context
+        try {
+          const rawStored = sessionStorage.getItem("Erti-Portal");
+          if (rawStored) {
+            const parsed = JSON.parse(rawStored);
+            parsed.profileCompletion = comp;
+            if (comp >= 100) {
+              parsed.isProfileCompleted = true;
+              parsed.isProfileRestricted = false;
+            }
+            if (emp.profileApprovalStatus) {
+              parsed.profileApprovalStatus = emp.profileApprovalStatus;
+            }
+            sessionStorage.setItem("Erti-Portal", JSON.stringify(parsed));
+            if (setUser) setUser(parsed);
+          }
+        } catch (syncErr) {
+          console.error("Session sync error in fetchEmployee:", syncErr);
+        }
 
         const previews = {};
         previews.picture = emp.pictureUrl || null;
@@ -1162,10 +1620,19 @@ const EmployeeDetails = ({ isAdmin = false }) => {
           toDate: emp.toDate?.split("T")[0] || "",
           dateRelieved: emp.dateRelieved?.split("T")[0] || "",
 
-          previousExperiences: (emp.previousExperiences || []).map((exp, i) => ({
-            ...exp,
-            id: exp.id || `exp-${i}-${Date.now()}`,
-          })),
+          previousExperiences: (emp.previousExperiences || []).map((exp, i) => {
+            const doj = exp.dateOfJoining ? String(exp.dateOfJoining).split("T")[0] : "";
+            const lwd = exp.lastWorkingDate ? String(exp.lastWorkingDate).split("T")[0] : "";
+            const calcExp = exp.totalExperience || (doj && lwd ? calculateExperience(doj, lwd) : "");
+            return {
+              ...exp,
+              dateOfJoining: doj,
+              lastWorkingDate: lwd,
+              totalExperience: calcExp,
+              previousSalary: exp.previousSalary ? formatSalaryWithCommas(exp.previousSalary) : "",
+              id: exp.id || `exp-${i}-${Date.now()}`,
+            };
+          }),
 
           siblings: (emp.siblings || []).map((sib, i) => ({
             ...sib,
@@ -1199,6 +1666,12 @@ const EmployeeDetails = ({ isAdmin = false }) => {
           setCareerGapReasons(reasonsMap);
           const firstReason = emp.careerGaps.find((g) => g && g.reason)?.reason;
           if (firstReason) setCareerGapReasonInput(firstReason);
+        }
+
+        if (Array.isArray(emp.previousExperiences) && emp.previousExperiences.length > 0) {
+          setHasPreviousExperience("yes");
+        } else {
+          setHasPreviousExperience("no");
         }
 
         if (emp.hasCertifications === "yes" || (Array.isArray(emp.professionalCertifications) && emp.professionalCertifications.length > 0)) {
@@ -1248,6 +1721,18 @@ const EmployeeDetails = ({ isAdmin = false }) => {
 
         if (!isAdmin) {
           await checkEditPermission();
+        }
+
+        const empUniqueId = emp.employeeDetailsId || emp.detailsId || emp._id || emp.empId || empId || user?._id;
+        if (empUniqueId) {
+          sessionStorage.setItem("onboarding_user_id", String(empUniqueId));
+          const savedStep = sessionStorage.getItem(`onboarding_step_${empUniqueId}`);
+          if (savedStep && !location.state?.scrollToField) {
+            const s = parseInt(savedStep, 10);
+            if (s >= 1 && s <= 7) {
+              setActiveStep(s);
+            }
+          }
         }
       }
     } catch (err) {
@@ -1320,9 +1805,30 @@ const EmployeeDetails = ({ isAdmin = false }) => {
     }
   }, [permissionsLoaded, location.state]);
 
+  /* ================= WIZARD STEP MAPPER FOR REJECTIONS ================= */
+  const getStepForField = (fieldId) => {
+    if (!fieldId) return 1;
+    const f = String(fieldId);
+    if (["name", "empId", "empIdString", "email", "phone", "gender", "dob", "bloodGroup", "status", "dateRelieved", "address", "emergencyContact"].includes(f)) return 1;
+    if (["fatherName", "fatherOccupation", "motherName", "motherOccupation", "siblings"].includes(f) || f.startsWith("siblings")) return 2;
+    if (["department", "designation", "previousExperiences", "working", "work", "experience", "salary"].includes(f) || f.startsWith("previousExperiences")) return 3;
+    if (["school10", "marks10", "passedOutYear10", "marksheet10", "certificate10", "school12", "marks12", "passedOutYear12", "marksheet12", "certificate12", "educationPath", "careerGaps", "education"].includes(f) || f.startsWith("careerGaps")) return 4;
+    if (f.startsWith("courses") || f.startsWith("course_") || f.startsWith("professionalCertifications") || f.startsWith("prof_cert_") || ["degreeCertificate", "courses", "professionalCertifications"].includes(f)) return 5;
+    if (["aadhaarNo", "panNo", "aadhaarFile", "panFile", "kyc", "pfNo", "uanNo", "pf", "bankName", "accountHolder", "accountNumber", "ifscCode", "branch", "toDate", "passbookFile", "bank"].includes(f)) return 6;
+    if (["picture", "profilePicture", "avatar"].includes(f)) return 7;
+    return 1;
+  };
+
   /* ================= SCROLL AND HIGHLIGHT REJECTED FILE ================= */
   const scrollToTargetRejectedField = (fieldId) => {
     setActiveHighlightedRejectedField(fieldId);
+    const targetStep = getStepForField(fieldId);
+    setActiveStep(targetStep);
+    const empUniqueId = formData?.employeeDetailsId || formData?.detailsId || formData?._id || formData?.empId || empId || user?._id;
+    if (empUniqueId) {
+      sessionStorage.setItem("onboarding_user_id", String(empUniqueId));
+      sessionStorage.setItem(`onboarding_step_${empUniqueId}`, String(targetStep));
+    }
 
     if (["school12", "marks12", "marksheet12", "certificate12"].includes(fieldId)) {
       setEducationPath("12th");
@@ -1545,15 +2051,15 @@ const EmployeeDetails = ({ isAdmin = false }) => {
 
     if (next10.length === 4) {
       const n10 = parseInt(next10, 10);
-      if (n10 < 1960 || n10 > currentYear) {
-        err10 = `Year must be between 1960 and ${currentYear}`;
+      if (n10 < 1950 || n10 > currentYear) {
+        err10 = `Year must be between 1950 and ${currentYear}`;
       }
     }
 
     if (next12.length === 4) {
       const n12 = parseInt(next12, 10);
-      if (n12 < 1960 || n12 > currentYear + 2) {
-        err12 = `Year must be between 1960 and ${currentYear + 2}`;
+      if (n12 < 1950 || n12 > currentYear + 2) {
+        err12 = `Year must be between 1950 and ${currentYear + 2}`;
       }
     }
 
@@ -1788,6 +2294,35 @@ const EmployeeDetails = ({ isAdmin = false }) => {
     setShowPan(!showPan);
   };
 
+  const toggleAccountNumberVisibility = async () => {
+    if (!showAccountNumber && (formData.accountNumber || "").includes("X")) {
+      try {
+        setIsFetchingAccountNumber(true);
+        const baseUrl = isAdmin ? `/users/employee/${empId}` : `/users/get-employee`;
+        const url = `${baseUrl}?unmask=true&type=edit`;
+        const response = await portalInstance.get(url);
+        if (response.data.success && response.data.data) {
+          const emp = response.data.data;
+          let acc = emp.accountNumber || "";
+          if (!acc && emp.bankHistory && Array.isArray(emp.bankHistory) && emp.bankHistory.length > 0) {
+            const latestHistory = [...emp.bankHistory].sort((a, b) =>
+              new Date(b.fromDate) - new Date(a.fromDate)
+            )[0];
+            acc = latestHistory?.accountNumber || "";
+          }
+          if (acc) {
+            setFormData((prev) => ({ ...prev, accountNumber: acc }));
+          }
+        }
+      } catch (err) {
+        console.error("❌ Failed to unmask Account Number:", err);
+      } finally {
+        setIsFetchingAccountNumber(false);
+      }
+    }
+    setShowAccountNumber(!showAccountNumber);
+  };
+
   /* ================= LOCAL MASK HELPERS ================= */
   const maskAadhaarLocal = (val) => {
     if (!val || val.includes("X") || val.length !== 12) return val;
@@ -1797,6 +2332,11 @@ const EmployeeDetails = ({ isAdmin = false }) => {
   const maskPanLocal = (val) => {
     if (!val || val.includes("X") || val.length !== 10) return val;
     return "XXXXX" + val.slice(5);
+  };
+
+  const maskAccountNumberLocal = (val) => {
+    if (!val || val.includes("X") || val.length <= 4) return val;
+    return "X".repeat(val.length - 4) + val.slice(-4);
   };
 
   /* ================= IFSC VALIDATION HANDLER ================= */
@@ -1885,26 +2425,50 @@ const EmployeeDetails = ({ isAdmin = false }) => {
 
   /* ================= SIBLING / COURSE / EXPERIENCE HANDLERS ================= */
   const handleAddSibling = () => {
-    if (newSibling.name.trim() === "" || newSibling.occupation.trim() === "") {
-      showErrorModal("Validation Error", "Please fill in sibling name and occupation");
-      return;
-    }
-
     markFieldAsUpdated("siblings");
     setFormData((prev) => ({
       ...prev,
-      siblings: [...prev.siblings, { ...newSibling, id: Date.now() }],
+      siblings: [
+        ...(prev.siblings || []),
+        { id: Date.now(), relationship: "Brother", name: "", occupation: "" },
+      ],
     }));
+  };
 
-    setNewSibling({ relationship: "Brother", name: "", occupation: "" });
-    setShowAddSibling(false);
+  const handleSiblingChange = (index, field, value) => {
+    markFieldAsUpdated("siblings");
+    setFormData((prev) => {
+      const updated = [...(prev.siblings || [])];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, siblings: updated };
+    });
   };
 
   const handleRemoveSibling = (index) => {
     markFieldAsUpdated("siblings");
     setFormData((prev) => ({
       ...prev,
-      siblings: prev.siblings.filter((_, i) => i !== index),
+      siblings: (prev.siblings || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleAddCourseDirect = (courseType = "UG") => {
+    markFieldAsUpdated("courses");
+    markFieldAsUpdated("degreeCertificate");
+    setFormData((prev) => ({
+      ...prev,
+      courses: [
+        ...(prev.courses || []),
+        {
+          id: Date.now(),
+          courseType,
+          collegeName: "",
+          courseName: "",
+          cgpa: "",
+          passedOutYear: "",
+          certificate: null,
+        },
+      ],
     }));
   };
 
@@ -2134,6 +2698,87 @@ const EmployeeDetails = ({ isAdmin = false }) => {
     return "";
   };
 
+  /* ================= SINGLE YEAR & COURSE DURATION HELPERS ================= */
+  // 10th and 12th year options: From current year down to 1950 (dynamically includes future years)
+  const singleYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const list = [];
+    for (let y = currentYear; y >= 1950; y--) {
+      list.push(String(y));
+    }
+    return list;
+  }, []);
+
+  // Course duration range options: From current year down to 1950 (dynamically includes future years)
+  const getCourseYearOptions = (duration) => {
+    const d = Number(duration) || 3;
+    const currentYear = new Date().getFullYear();
+    const list = [];
+    for (let s = currentYear; s >= 1950; s--) {
+      list.push(`${s}-${s + d}`);
+    }
+    return list;
+  };
+
+  // Helper to determine active course duration (1, 2, 3, 4, or 5 years)
+  const getCourseDuration = (course) => {
+    if (course?.courseDurationYears) return Number(course.courseDurationYears);
+    if (course?.passedOutYear) {
+      const m = String(course.passedOutYear).match(/^(\d{4})\s*-\s*(\d{4})$/);
+      if (m) {
+        const diff = parseInt(m[2], 10) - parseInt(m[1], 10);
+        if ([1, 2, 3, 4, 5].includes(diff)) return diff;
+      }
+    }
+    const ct = String(course?.courseType || "").toUpperCase();
+    if (ct === "PG") return 2;
+    if (ct === "DIPLOMA") return 3;
+    return 4;
+  };
+
+  // Handler for course duration radio change
+  const handleCourseDurationChange = (index, newDuration) => {
+    const durationNum = Number(newDuration);
+    markFieldAsUpdated("courses");
+
+    setFormData((prev) => {
+      const updatedCourses = [...(prev.courses || [])];
+      const currCourse = updatedCourses[index] || {};
+      let newPassedOutYear = currCourse.passedOutYear || "";
+
+      if (newPassedOutYear) {
+        const m = String(newPassedOutYear).match(/^(\d{4})\s*-\s*(\d{4})$/);
+        if (m) {
+          const startYear = parseInt(m[1], 10);
+          newPassedOutYear = `${startYear}-${startYear + durationNum}`;
+        }
+      }
+
+      let joiningYear = currCourse.joiningYear;
+      if (newPassedOutYear && newPassedOutYear.match(/^(\d{4})-/)) {
+        joiningYear = newPassedOutYear.split("-")[0];
+      }
+
+      updatedCourses[index] = {
+        ...currCourse,
+        courseDurationYears: durationNum,
+        passedOutYear: newPassedOutYear,
+        ...(joiningYear ? { joiningYear } : {}),
+      };
+      return { ...prev, courses: updatedCourses };
+    });
+
+    const currCourse = (formData.courses || [])[index];
+    if (currCourse?.passedOutYear) {
+      const m = String(currCourse.passedOutYear).match(/^(\d{4})\s*-\s*(\d{4})$/);
+      if (m) {
+        const startYear = parseInt(m[1], 10);
+        const newRange = `${startYear}-${startYear + durationNum}`;
+        triggerCourseCareerGapCheck(newRange, currCourse.courseType || "UG", index);
+      }
+    }
+  };
+
   const handleCourseFileChange = (index, file, inputElement) => {
     if (!file) {
       setFormData((prev) => {
@@ -2216,7 +2861,25 @@ const EmployeeDetails = ({ isAdmin = false }) => {
     markFieldAsUpdated("previousExperiences");
     setFormData((prev) => {
       const updatedExperiences = [...prev.previousExperiences];
-      updatedExperiences[index] = { ...updatedExperiences[index], [field]: value };
+      const currentExp = { ...updatedExperiences[index] };
+
+      if (field === "previousSalary") {
+        currentExp.previousSalary = formatSalaryWithCommas(value);
+      } else if (field === "dateOfJoining" || field === "lastWorkingDate") {
+        currentExp[field] = value;
+        const doj = field === "dateOfJoining" ? value : currentExp.dateOfJoining;
+        const lwd = field === "lastWorkingDate" ? value : currentExp.lastWorkingDate;
+        if (doj && lwd) {
+          const calculatedExp = calculateExperience(doj, lwd);
+          currentExp.totalExperience = calculatedExp;
+        } else {
+          currentExp.totalExperience = "";
+        }
+      } else {
+        currentExp[field] = value;
+      }
+
+      updatedExperiences[index] = currentExp;
       return { ...prev, previousExperiences: updatedExperiences };
     });
   };
@@ -2257,6 +2920,32 @@ const EmployeeDetails = ({ isAdmin = false }) => {
     return false;
   };
 
+  const isFieldAllowed = (field) => {
+    if (!allowedFields || allowedFields.length === 0) return false;
+    if (allowedFields.includes("ALL")) return true;
+    if (allowedFields.includes(field)) return true;
+    if (field === "marksheet10" && (allowedFields.includes("certificate10") || allowedFields.includes("marksheet10"))) return true;
+    if (field === "certificate10" && (allowedFields.includes("marksheet10") || allowedFields.includes("certificate10"))) return true;
+    if (field === "marksheet12" && (allowedFields.includes("certificate12") || allowedFields.includes("marksheet12"))) return true;
+    if (field === "certificate12" && (allowedFields.includes("marksheet12") || allowedFields.includes("certificate12"))) return true;
+    if (
+      (field === "degreeCertificate" || field === "courses" || String(field).startsWith("course_") || String(field).startsWith("courses.")) &&
+      (allowedFields.includes("degreeCertificate") || allowedFields.includes("courses") || allowedFields.some((af) => String(af).startsWith("course_") || String(af).startsWith("courses.")))
+    ) return true;
+    if (
+      (field === "professionalCertifications" || String(field).startsWith("prof_cert_") || String(field).startsWith("professionalCertifications.")) &&
+      (allowedFields.includes("professionalCertifications") || allowedFields.some((af) => String(af).startsWith("prof_cert_") || String(af).startsWith("professionalCertifications.")))
+    ) return true;
+    if (allowedFields.includes("kyc") && ["aadhaarNo", "panNo", "aadhaarFile", "panFile"].includes(field)) return true;
+    if (allowedFields.includes("bank") && ["bankName", "accountHolder", "accountNumber", "ifscCode", "branch", "toDate", "passbookFile"].includes(field)) return true;
+    if (allowedFields.includes("education") && ["school10", "marks10", "marksheet10", "certificate10", "passedOutYear10", "school12", "marks12", "marksheet12", "certificate12", "passedOutYear12", "careerGaps", "educationPath", "courses", "degreeCertificate", "professionalCertifications"].includes(field)) return true;
+    if (allowedFields.includes("personal") && ["dob", "gender", "phone", "emergencyContact", "bloodGroup", "address", "name", "email"].includes(field)) return true;
+    if (allowedFields.includes("family") && ["fatherName", "motherName", "fatherOccupation", "motherOccupation", "siblings"].includes(field)) return true;
+    if ((allowedFields.includes("working") || allowedFields.includes("work")) && ["previousExperiences", "department", "designation", "experience"].includes(field)) return true;
+    if (allowedFields.includes("documents") && ["picture", "aadhaarFile", "panFile", "marksheet10", "marksheet12", "courses", "degreeCertificate", "passbookFile"].includes(field)) return true;
+    return false;
+  };
+
   const canEditField = (field) => {
     if (isHrRestrictedFromEdit) {
       return false;
@@ -2284,6 +2973,17 @@ const EmployeeDetails = ({ isAdmin = false }) => {
       return true;
     }
 
+    // ✅ Restricted Edit Mode (approved edit request) takes precedence over isProfileCompleted flag
+    if (isEditRequestMode) {
+      if (["salary", "status", "employmentStatus"].includes(field)) {
+        return false;
+      }
+      if (!field) {
+        return canEditProfile;
+      }
+      return isFieldAllowed(field);
+    }
+
     if (formData.isProfileCompleted === false) {
       if (["salary", "status", "employmentStatus"].includes(field)) {
         return false;
@@ -2297,7 +2997,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
       return canEditProfile;
     }
 
-    return allowedFields.includes(field);
+    return isFieldAllowed(field);
   };
 
   /* ================= SECTION FIELD MAP ================= */
@@ -2329,6 +3029,75 @@ const EmployeeDetails = ({ isAdmin = false }) => {
     rejectedFields.length > 0 &&
     !rejectedFields.includes("ALL")
   );
+
+  const isRejectedStatus = Boolean(
+    !effectiveIsAdmin && (approvalStatus === "rejected" || isRejectedMode)
+  );
+
+  const isEditRequestMode = Boolean(
+    !effectiveIsAdmin &&
+    canEditProfile &&
+    allowedFields &&
+    allowedFields.length > 0 &&
+    !allowedFields.includes("ALL") &&
+    approvalStatus !== "rejected"
+  );
+
+  const isRestrictedEditMode = Boolean(isRejectedMode || isEditRequestMode);
+
+  const isFieldVisible = (field) => {
+    if (effectiveIsAdmin) return true;
+    if (isEditRequestMode) return isFieldAllowed(field);
+    if (isRejectedMode) return isFieldRejected(field);
+    return true;
+  };
+
+  const STEP_FIELDS_MAP = {
+    1: ["dob", "gender", "phone", "emergencyContact", "bloodGroup", "address", "name", "email", "status", "personal"],
+    2: ["fatherName", "fatherOccupation", "motherName", "motherOccupation", "siblings", "family"],
+    3: ["department", "designation", "status", "experience", "salary", "previousExperiences", "work", "working"],
+    4: [
+      "school10", "marks10", "marksheet10", "certificate10", "passedOutYear10",
+      "school12", "marks12", "marksheet12", "certificate12", "passedOutYear12",
+      "educationPath", "careerGaps", "education"
+    ],
+    5: ["courses", "degreeCertificate", "professionalCertifications"],
+    6: [
+      "aadhaarNo", "panNo", "aadhaarFile", "panFile",
+      "bankName", "accountHolder", "accountNumber", "ifscCode", "branch", "toDate", "passbookFile",
+      "pfNo", "uanNo", "kyc", "bank", "kycBank", "pf"
+    ],
+    7: ["picture", "documents"],
+  };
+
+  const isStepVisible = useCallback((stepId) => {
+    if (effectiveIsAdmin) return true;
+    if (!isRestrictedEditMode) return true;
+    const stepFields = STEP_FIELDS_MAP[stepId] || [];
+    if (isEditRequestMode) {
+      return stepFields.some((f) => isFieldAllowed(f));
+    }
+    if (isRejectedMode) {
+      return stepFields.some((f) => isFieldRejected(f));
+    }
+    return true;
+  }, [effectiveIsAdmin, isRestrictedEditMode, isEditRequestMode, isRejectedMode, allowedFields, rejectedFields]);
+
+  const visibleSteps = useMemo(() => {
+    if (effectiveIsAdmin || !isRestrictedEditMode) {
+      return ONBOARDING_STEPS;
+    }
+    const filtered = ONBOARDING_STEPS.filter((step) => isStepVisible(step.id));
+    return filtered.length > 0 ? filtered : ONBOARDING_STEPS;
+  }, [effectiveIsAdmin, isRestrictedEditMode, isStepVisible]);
+
+  useEffect(() => {
+    if (isRestrictedEditMode && visibleSteps.length > 0) {
+      if (!visibleSteps.some((s) => s.id === activeStep)) {
+        setActiveStep(visibleSteps[0].id);
+      }
+    }
+  }, [isRestrictedEditMode, visibleSteps, activeStep]);
 
   const getVisibleSections = () => {
     if (!permissionsLoaded) return [];
@@ -2366,6 +3135,121 @@ const EmployeeDetails = ({ isAdmin = false }) => {
   };
 
   const visibleSections = getVisibleSections();
+
+  /* ================= 7-STEP WIZARD COMPLETION STATUS ================= */
+  const getStepStatus = useCallback((stepId) => {
+    const isValFilled = (val) => {
+      if (val === null || val === undefined) return false;
+      if (typeof val === "string") return val.trim().length > 0;
+      if (typeof val === "number") return true;
+      if (val instanceof File) return true;
+      if (Array.isArray(val)) return val.length > 0;
+      if (typeof val === "object") return Object.keys(val).length > 0;
+      return false;
+    };
+
+    if (stepId === 1) {
+      const keys = ["name", "email", "phone", "gender", "dob", "bloodGroup", "status", "address", "emergencyContact"];
+      const filledCount = keys.filter((k) => isValFilled(formData[k])).length;
+      if (filledCount === keys.length) return "complete";
+      if (filledCount > 0) return "partial";
+      return "incomplete";
+    }
+
+    if (stepId === 2) {
+      const keys = ["fatherName", "fatherOccupation", "motherName", "motherOccupation"];
+      const filledCount = keys.filter((k) => isValFilled(formData[k])).length;
+      if (filledCount === keys.length) return "complete";
+      if (filledCount > 0 || (Array.isArray(formData.siblings) && formData.siblings.length > 0)) return "partial";
+      return "incomplete";
+    }
+
+    if (stepId === 3) {
+      const baseFilled = isValFilled(formData.department) && isValFilled(formData.designation) && isValFilled(formData.status);
+      const anyBase = isValFilled(formData.department) || isValFilled(formData.designation) || isValFilled(formData.status);
+      const expChoice = hasPreviousExperience || (Array.isArray(formData.previousExperiences) && formData.previousExperiences.length > 0 ? "yes" : "no");
+      
+      if (expChoice === "no") {
+        if (baseFilled) return "complete";
+        if (anyBase) return "partial";
+        return "incomplete";
+      } else {
+        const hasValidExp = Array.isArray(formData.previousExperiences) && formData.previousExperiences.length > 0 &&
+          formData.previousExperiences.every((exp) => isValFilled(exp.previousCompany) && isValFilled(exp.designation));
+        const anyExp = Array.isArray(formData.previousExperiences) && formData.previousExperiences.length > 0;
+        if (baseFilled && hasValidExp) return "complete";
+        if (anyBase || anyExp) return "partial";
+        return "incomplete";
+      }
+    }
+
+    if (stepId === 4) {
+      const has10th = isValFilled(formData.school10) && isValFilled(formData.marks10) && isValFilled(formData.passedOutYear10) && (isValFilled(formData.marksheet10) || isValFilled(filePreviews.marksheet10));
+      const any10th = isValFilled(formData.school10) || isValFilled(formData.marks10) || isValFilled(formData.passedOutYear10) || isValFilled(formData.marksheet10) || isValFilled(filePreviews.marksheet10);
+
+      let pathValid = false;
+      let anyPath = false;
+      if (educationPath === "12th") {
+        pathValid = isValFilled(formData.school12) && isValFilled(formData.marks12) && isValFilled(formData.passedOutYear12) && (isValFilled(formData.marksheet12) || isValFilled(filePreviews.marksheet12));
+        anyPath = isValFilled(formData.school12) || isValFilled(formData.marks12) || isValFilled(formData.passedOutYear12) || isValFilled(formData.marksheet12) || isValFilled(filePreviews.marksheet12);
+      } else if (educationPath === "Diploma") {
+        pathValid = true;
+        anyPath = true;
+      }
+
+      if (has10th && pathValid) return "complete";
+      if (any10th || anyPath || isValFilled(educationPath)) return "partial";
+      return "incomplete";
+    }
+
+    if (stepId === 5) {
+      const hasCourseCert = (Array.isArray(formData.courses) && formData.courses.length > 0 &&
+        formData.courses.every((c) =>
+          c && isValFilled(c.courseName) && isValFilled(c.collegeName) &&
+          (c.certificate instanceof File || (typeof c.certificate === "string" && c.certificate.trim() !== "") || (typeof c.certificateUrl === "string" && c.certificateUrl.trim() !== "") || filePreviews[`course_${c.id}_certificate`] || filePreviews[`course_${c._id}_certificate`])
+        )) || (formData.degreeCertificate instanceof File || (typeof formData.degreeCertificate === "string" && formData.degreeCertificate.trim() !== ""));
+
+      const anyCourse = (Array.isArray(formData.courses) && formData.courses.length > 0) || isValFilled(formData.degreeCertificate);
+
+      let certsSatisfied = false;
+      let anyCert = false;
+      if (hasCertifications === "no") {
+        certsSatisfied = true;
+      } else if (hasCertifications === "yes") {
+        anyCert = certifications.length > 0;
+        certsSatisfied = certifications.length > 0 && certifications.every((c) => isValFilled(c.courseName) && isValFilled(c.institutionName));
+      } else {
+        certsSatisfied = false;
+      }
+
+      if (hasCourseCert && certsSatisfied) return "complete";
+      if (anyCourse || anyCert || isValFilled(hasCertifications)) return "partial";
+      return "incomplete";
+    }
+
+    if (stepId === 6) {
+      const hasAadhaar = isValFilled(formData.aadhaarNo) && (isValFilled(formData.aadhaarFile) || isValFilled(filePreviews.aadhaarFile));
+      const hasPan = isValFilled(formData.panNo) && (isValFilled(formData.panFile) || isValFilled(filePreviews.panFile));
+      const hasBank = isValFilled(formData.bankName) && isValFilled(formData.accountHolder) && isValFilled(formData.accountNumber) && isValFilled(formData.ifscCode) && isValFilled(formData.branch) && (isValFilled(formData.passbookFile) || isValFilled(filePreviews.passbookFile));
+
+      const anyAadhaar = isValFilled(formData.aadhaarNo) || isValFilled(formData.aadhaarFile) || isValFilled(filePreviews.aadhaarFile);
+      const anyPan = isValFilled(formData.panNo) || isValFilled(formData.panFile) || isValFilled(filePreviews.panFile);
+      const anyBank = isValFilled(formData.bankName) || isValFilled(formData.accountHolder) || isValFilled(formData.accountNumber) || isValFilled(formData.ifscCode) || isValFilled(formData.branch) || isValFilled(formData.passbookFile) || isValFilled(filePreviews.passbookFile);
+      const anyPf = isValFilled(formData.pfNo) || isValFilled(formData.uanNo);
+
+      if (hasAadhaar && hasPan && hasBank) return "complete";
+      if (anyAadhaar || anyPan || anyBank || anyPf) return "partial";
+      return "incomplete";
+    }
+
+    if (stepId === 7) {
+      const hasPic = isValFilled(formData.picture) || isValFilled(filePreviews.picture);
+      if (hasPic) return "complete";
+      return "incomplete";
+    }
+
+    return "incomplete";
+  }, [formData, filePreviews, educationPath, hasPreviousExperience, hasCertifications, certifications]);
 
   const getMissingFields = () => {
     const requiredFields = [
@@ -2468,74 +3352,78 @@ const EmployeeDetails = ({ isAdmin = false }) => {
   const missingFields = getMissingFields();
   const effectiveCompletion = missingFields.length === 0 ? 100 : profileCompletion;
 
-  const handleSave = async () => {
-    if (educationPath === "Diploma" && (formData.school12 || formData.marks12)) {
-      showErrorModal("Error", "Diploma students cannot fill 12th details");
-      return;
+  const textFields = [
+    "name", "email", "role",
+    "dob", "gender", "phone", "emergencyContact",
+    "bloodGroup", "address", "fatherName", "motherName",
+    "fatherOccupation", "motherOccupation", "department",
+    "designation", "status", "dateRelieved", "experience", "salary",
+    "school10", "marks10", "passedOutYear10", "school12", "marks12", "passedOutYear12",
+    "aadhaarNo", "panNo", "uanNo", "pfNo",
+    "bankName", "accountHolder", "accountNumber", "ifscCode", "branch", "toDate",
+  ];
+
+  const buildSaveFormData = (options = {}) => {
+    const { submitForApproval = false } = options;
+    let safeStatus = formData.status;
+    if (Array.isArray(safeStatus)) {
+      safeStatus = safeStatus[0];
+    }
+    if (typeof safeStatus === "string") {
+      safeStatus = safeStatus.toLowerCase().trim();
+    }
+    let safeDateRelieved = formData.dateRelieved;
+    if (safeStatus !== "relieved") {
+      safeDateRelieved = "";
     }
 
-    if (educationPath === "12th" && (!formData.school12 || !formData.marks12)) {
-      showErrorModal("Error", "12th details are required");
-      return;
-    }
+    const form = new FormData();
+    form.append("submitForApproval", submitForApproval ? "true" : "false");
 
-    if (educationPath === "Diploma") {
-      const hasDiplomaCourse = Array.isArray(formData.courses) && formData.courses.some(
-        (c) => c && c.courseType === "Diploma" && ((c.collegeName && c.collegeName.trim() !== "") || (c.courseName && c.courseName.trim() !== ""))
-      );
-      if (!hasDiplomaCourse) {
-        showErrorModal("Error", "Diploma details are required");
-        return;
-      }
-    }
-
-    const marks10Num = parseInt(formData.marks10);
-    const marks12Num = parseInt(formData.marks12);
-
-    if (
-      formData.marks10 !== "" &&
-      (isNaN(marks10Num) || marks10Num < 100 || marks10Num > 500)
-    ) {
-      showErrorModal("Validation Error", "10th marks must be between 100 and 500");
-      return;
-    }
-
-    if (formData.marks12 !== "") {
-      if (marks12Total === 600) {
-        if (marks12Num > 600 && marks12Num <= 1200) {
-          showErrorModal(
-            "Validation Error",
-            "Marks exceed 600. Please select 1200 total marks if your maximum mark is 1200"
-          );
-          return;
+    textFields.forEach((field) => {
+      if (
+        (
+          field !== "dateRelieved"
+            ? (isAdmin || canEditField(field))
+            : isAdmin
+        ) &&
+        formData[field] !== undefined &&
+        formData[field] !== null
+      ) {
+        let value = formData[field];
+        if (field === "status") {
+          value = safeStatus;
         }
-        if (isNaN(marks12Num) || marks12Num < 100 || marks12Num > 600) {
-          showErrorModal("Validation Error", "12th marks must be between 100 and 600");
-          return;
+        if (field === "dateRelieved") {
+          value = safeDateRelieved;
         }
-      } else if (marks12Total === 1200) {
-        if (isNaN(marks12Num) || marks12Num < 100 || marks12Num > 1200) {
-          showErrorModal("Validation Error", "12th marks must be between 100 and 1200");
-          return;
+        if (value !== "") {
+          form.append(field, value);
         }
       }
+    });
+
+    if (isAdmin || canEditField("siblings")) {
+      form.append("siblings", JSON.stringify(formData.siblings || []));
     }
 
-    if (yearErrors.passedOutYear10 || yearErrors.passedOutYear12) {
-      showErrorModal("Validation Error", yearErrors.passedOutYear10 || yearErrors.passedOutYear12);
-      return;
+    if (isAdmin || canEditField("previousExperiences")) {
+      form.append("previousExperiences", JSON.stringify(formData.previousExperiences || []));
     }
 
-    if (educationPath === "12th") {
-      if (formData.passedOutYear10 && formData.passedOutYear12) {
-        const gapInfo = calculate10to12Gap(formData.passedOutYear10, formData.passedOutYear12);
-        if (gapInfo && gapInfo.isInvalid) {
-          showErrorModal("Validation Error", `12th completion year cannot be before expected year (${gapInfo.expected12th})`);
-          return;
-        }
-      }
+    if (isAdmin || canEditField("courses")) {
+      const coursesPayload = (formData.courses || []).map((c) => {
+        const { certificate, certificateUrl, ...rest } = c;
+        return {
+          ...rest,
+          certificate: typeof certificate === "string" && certificate.trim() !== "" ? certificate : undefined,
+        };
+      });
+      form.append("courses", JSON.stringify(coursesPayload));
     }
 
+    // Career Gap Payload (Eligible transitions only) - only saved when positive gap + reason provided
+    let careerGapsPayload = [];
     const eligibleGaps = calculateEligibleCareerGaps({
       passedOutYear10: formData.passedOutYear10,
       passedOutYear12: formData.passedOutYear12,
@@ -2543,19 +3431,426 @@ const EmployeeDetails = ({ isAdmin = false }) => {
       courses: formData.courses,
     });
 
-    const missingReasonGap = eligibleGaps.find(
-      (g) => !(careerGapReasons[g.educationStage] || (eligibleGaps.length === 1 && careerGapReasonInput.trim()))
-    );
+    careerGapsPayload = eligibleGaps
+      .map((g) => {
+        const reason =
+          careerGapReasons[g.educationStage] ||
+          (eligibleGaps.length === 1 ? careerGapReasonInput.trim() : "") ||
+          (Array.isArray(formData.careerGaps) ? formData.careerGaps.find((cg) => cg && cg.educationStage === g.educationStage)?.reason : "");
+        return {
+          ...g,
+          reason: (reason || "").trim(),
+        };
+      })
+      .filter((g) => g.gapDuration > 0 && g.reason.length > 0);
 
-    if (missingReasonGap) {
-      setActiveGapStage(missingReasonGap.educationStage);
-      setCareerGapReasonInput(careerGapReasons[missingReasonGap.educationStage] || "");
-      setShowCareerGapModal(true);
-      showErrorModal(
-        "Career Gap Reason Required",
-        `A career gap of ${missingReasonGap.gapDuration} year(s) was detected for ${missingReasonGap.educationStage}. Please provide the reason before saving.`
-      );
+    form.append("careerGaps", JSON.stringify(careerGapsPayload));
+
+    if (educationPath) {
+      const is12thReady = educationPath === "12th" && Boolean(formData.school12 && formData.marks12);
+      const isDiplomaReady =
+        educationPath === "Diploma" &&
+        Array.isArray(formData.courses) &&
+        formData.courses.some(
+          (c) =>
+            c &&
+            c.courseType === "Diploma" &&
+            ((c.collegeName && c.collegeName.trim() !== "") || (c.courseName && c.courseName.trim() !== ""))
+        );
+      if (is12thReady || isDiplomaReady || activeStep >= 4) {
+        form.append("educationPath", educationPath);
+      }
+    }
+
+    // Include additional certifications
+    form.append("hasCertifications", hasCertifications || "no");
+    if (hasCertifications === "yes" && certifications.length > 0) {
+      const certsPayload = certifications.map(({ certificateFile, certificateUrl, ...rest }) => rest);
+      form.append("professionalCertifications", JSON.stringify(certsPayload));
+      certifications.forEach((cert, idx) => {
+        if (cert.certificateFile instanceof File) {
+          form.append(`cert_${idx}_certificate`, cert.certificateFile);
+        }
+      });
+    } else {
+      form.append("professionalCertifications", JSON.stringify([]));
+    }
+
+    const singleFiles = [
+      { field: "picture", data: formData.picture },
+      { field: "marksheet10", data: formData.marksheet10 },
+      { field: "marksheet12", data: formData.marksheet12 },
+      { field: "aadhaarFile", data: formData.aadhaarFile },
+      { field: "panFile", data: formData.panFile },
+      { field: "passbookFile", data: formData.passbookFile },
+    ];
+
+    singleFiles.forEach(({ field, data }) => {
+      if ((isAdmin || canEditField(field)) && data instanceof File) {
+        form.append(field, data);
+      }
+    });
+
+    if ((isAdmin || canEditField("courses")) && formData.courses?.length) {
+      formData.courses.forEach((course, idx) => {
+        if (course.certificate instanceof File) {
+          if (course.id) {
+            form.append(`course_${course.id}_certificate`, course.certificate);
+          }
+          if (course._id) {
+            form.append(`course_${course._id}_certificate`, course.certificate);
+          }
+          form.append(`course_${idx}_certificate`, course.certificate);
+        }
+      });
+    }
+
+    return { form, safeStatus, safeDateRelieved, careerGapsPayload };
+  };
+
+  const validateCurrentStep = (step) => {
+    if (step === 1) {
+      if (canEditField("emergencyContact") && (contactErrors.emergencyContact || (formData.emergencyContact && !/^\d{10}$/.test(formData.emergencyContact)))) {
+        showErrorModal("Validation Error", contactErrors.emergencyContact || "Emergency Contact must be 10 digits");
+        return false;
+      }
+      if (formData.phone && !/^\d{10}$/.test(formData.phone)) {
+        showErrorModal("Validation Error", "Mobile Number must be 10 digits");
+        return false;
+      }
+      return true;
+    }
+
+    if (step === 2) {
+      return true;
+    }
+
+    if (step === 3) {
+      return true;
+    }
+
+    if (step === 4) {
+      if (educationPath === "Diploma" && (formData.school12 || formData.marks12)) {
+        showErrorModal("Error", "Diploma students cannot fill 12th details");
+        return false;
+      }
+
+      const marks10Num = parseInt(formData.marks10);
+      const marks12Num = parseInt(formData.marks12);
+
+      if (
+        formData.marks10 !== "" &&
+        (isNaN(marks10Num) || marks10Num < 100 || marks10Num > 500)
+      ) {
+        showErrorModal("Validation Error", "10th marks must be between 100 and 500");
+        return false;
+      }
+
+      if (formData.marks12 !== "") {
+        if (marks12Total === 600) {
+          if (marks12Num > 600 && marks12Num <= 1200) {
+            showErrorModal(
+              "Validation Error",
+              "Marks exceed 600. Please select 1200 total marks if your maximum mark is 1200"
+            );
+            return false;
+          }
+          if (isNaN(marks12Num) || marks12Num < 100 || marks12Num > 600) {
+            showErrorModal("Validation Error", "12th marks must be between 100 and 600");
+            return false;
+          }
+        } else if (marks12Total === 1200) {
+          if (isNaN(marks12Num) || marks12Num < 100 || marks12Num > 1200) {
+            showErrorModal("Validation Error", "12th marks must be between 100 and 1200");
+            return false;
+          }
+        }
+      }
+
+      if (yearErrors.passedOutYear10 || yearErrors.passedOutYear12) {
+        showErrorModal("Validation Error", yearErrors.passedOutYear10 || yearErrors.passedOutYear12);
+        return false;
+      }
+
+      if (educationPath === "12th") {
+        if (formData.passedOutYear10 && formData.passedOutYear12) {
+          const gapInfo = calculate10to12Gap(formData.passedOutYear10, formData.passedOutYear12);
+          if (gapInfo && gapInfo.isInvalid) {
+            showErrorModal("Validation Error", `12th completion year cannot be before expected year (${gapInfo.expected12th})`);
+            return false;
+          }
+        }
+      }
+
+      return true;
+    }
+
+    if (step === 5) {
+      if (Array.isArray(formData.courses) && formData.courses.length > 0) {
+        for (const course of formData.courses) {
+          const cgpaError = validateCgpa(course.cgpa);
+          const yearError = validateYearRange(course.passedOutYear, course.courseType);
+
+          if (cgpaError || yearError) {
+            showErrorModal(
+              "Validation Error",
+              yearError || `Invalid data in course: ${course.courseName || "Unnamed"}`
+            );
+            return false;
+          }
+        }
+      }
+
+      if (canEditField("courses") && hasCertifications === "yes") {
+        for (let i = 0; i < certifications.length; i++) {
+          const c = certifications[i];
+          if (!c.courseName?.trim()) {
+            showErrorModal("Validation Error", `Certification ${i + 1}: Course Name is required.`);
+            return false;
+          }
+          if (!c.startMonthYear) {
+            showErrorModal("Validation Error", `Certification ${i + 1}: Start Month and Year is required.`);
+            return false;
+          }
+          if (!c.endMonthYear) {
+            showErrorModal("Validation Error", `Certification ${i + 1}: End Month and Year is required.`);
+            return false;
+          }
+          if (c.startMonthYear && c.endMonthYear && c.startMonthYear > c.endMonthYear) {
+            showErrorModal("Validation Error", `Certification ${i + 1}: End Month and Year must be after or same as Start Month and Year.`);
+            return false;
+          }
+          if (!c.courseType?.trim()) {
+            showErrorModal("Validation Error", `Certification ${i + 1}: Course Type is required.`);
+            return false;
+          }
+          if (!c.institutionName?.trim()) {
+            showErrorModal("Validation Error", `Certification ${i + 1}: Institution / College Name is required.`);
+            return false;
+          }
+        }
+      }
+
+      return true;
+    }
+
+    if (step === 6) {
+      if (canEditField("aadhaarNo") && (kycErrors.aadhaarNo || (formData.aadhaarNo && !formData.aadhaarNo.includes("X") && !/^\d{12}$/.test(formData.aadhaarNo)))) {
+        showErrorModal("Validation Error", kycErrors.aadhaarNo || "Aadhaar must be 12 digits");
+        return false;
+      }
+
+      if (canEditField("panNo") && (kycErrors.panNo || (formData.panNo && !formData.panNo.includes("X") && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(formData.panNo)))) {
+        showErrorModal("Validation Error", kycErrors.panNo || "Invalid PAN format (ABCDE1234F)");
+        return false;
+      }
+
+      if (bankErrors.ifscCode) {
+        showErrorModal("Validation Error", "Fix IFSC code before saving");
+        return false;
+      }
+
+      if (
+        formData.ifscCode &&
+        !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(formData.ifscCode)
+      ) {
+        showErrorModal("Validation Error", "Invalid IFSC format");
+        return false;
+      }
+
+      if (bankErrors.accountNumber) {
+        showErrorModal("Validation Error", "Fix Account Number before saving");
+        return false;
+      }
+
+      if (
+        formData.accountNumber &&
+        (formData.accountNumber.length < 9 || formData.accountNumber.length > 18)
+      ) {
+        showErrorModal("Validation Error", "Account number must be 9–18 digits");
+        return false;
+      }
+
+      return true;
+    }
+
+    return true;
+  };
+
+  const handleStepNavigation = (targetStep) => {
+    const boundedStep = Math.max(1, Math.min(7, targetStep));
+    setActiveStep(boundedStep);
+    const empUniqueId = formData?.employeeDetailsId || formData?.detailsId || formData?._id || formData?.empId || empId || user?._id;
+    if (empUniqueId) {
+      sessionStorage.setItem("onboarding_user_id", String(empUniqueId));
+      sessionStorage.setItem(`onboarding_step_${empUniqueId}`, String(boundedStep));
+    }
+    window.scrollTo({ top: 200, behavior: "smooth" });
+  };
+
+  const handleSaveAndContinue = async () => {
+    if (isHrRestrictedFromEdit || (!effectiveIsAdmin && !canEditProfile) || (isAdmin && user?.isHr && user?.role !== "admin")) {
+      handleStepNavigation(activeStep + 1);
       return;
+    }
+
+    if (!validateCurrentStep(activeStep)) {
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const { form } = buildSaveFormData({ submitForApproval: false });
+
+      let response;
+      if (isAdmin) {
+        response = await portalInstance.put(
+          `/users/admin/employee/${empId}/update`,
+          form
+        );
+      } else {
+        response = await portalInstance.put("/users/update-employee", form);
+      }
+
+      if (response && response.data && response.data.success) {
+        const nextStep = Math.min(7, activeStep + 1);
+        const empUniqueId =
+          response.data.employeeDetailsId ||
+          response.data.detailsId ||
+          response.data.data?.employeeDetailsId ||
+          response.data.data?._id ||
+          formData?.employeeDetailsId ||
+          formData?.detailsId ||
+          formData?._id ||
+          formData?.empId ||
+          empId ||
+          user?._id;
+
+        if (empUniqueId) {
+          sessionStorage.setItem("onboarding_user_id", String(empUniqueId));
+          sessionStorage.setItem(`onboarding_step_${empUniqueId}`, String(nextStep));
+        }
+
+        toast.success("Progress saved successfully!");
+        setActiveStep(nextStep);
+        window.scrollTo({ top: 200, behavior: "smooth" });
+
+        await fetchEmployee();
+      } else {
+        showErrorModal("Save Failed", response?.data?.message || "Failed to save progress.");
+      }
+    } catch (err) {
+      console.error("❌ Save and Continue error:", err);
+      showErrorModal(
+        "Save Error",
+        "Could not save progress: " +
+          (err.response?.data?.message || err.message || "Unknown error")
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSave = async () => {
+    // Regular employee onboarding: profile must be 100% complete before sending to Admin
+    if (!effectiveIsAdmin && !isRestrictedEditMode) {
+      const currentMissing = getMissingFields();
+      if (currentMissing.length > 0 || effectiveCompletion < 100) {
+        toast.warning("Without completing the profile 100%, the request cannot be sent to Admin.");
+        return;
+      }
+    }
+
+    const isEducationEditable = canEditField("school10") || canEditField("school12") || canEditField("education");
+    if (isEducationEditable) {
+      if (educationPath === "Diploma" && (formData.school12 || formData.marks12)) {
+        showErrorModal("Error", "Diploma students cannot fill 12th details");
+        return;
+      }
+
+      if (educationPath === "12th" && (!formData.school12 || !formData.marks12)) {
+        showErrorModal("Error", "12th details are required");
+        return;
+      }
+
+      if (educationPath === "Diploma") {
+        const hasDiplomaCourse = Array.isArray(formData.courses) && formData.courses.some(
+          (c) => c && c.courseType === "Diploma" && ((c.collegeName && c.collegeName.trim() !== "") || (c.courseName && c.courseName.trim() !== ""))
+        );
+        if (!hasDiplomaCourse) {
+          showErrorModal("Error", "Diploma details are required");
+          return;
+        }
+      }
+
+      const marks10Num = parseInt(formData.marks10);
+      const marks12Num = parseInt(formData.marks12);
+
+      if (
+        formData.marks10 !== "" &&
+        (isNaN(marks10Num) || marks10Num < 100 || marks10Num > 500)
+      ) {
+        showErrorModal("Validation Error", "10th marks must be between 100 and 500");
+        return;
+      }
+
+      if (formData.marks12 !== "") {
+        if (marks12Total === 600) {
+          if (marks12Num > 600 && marks12Num <= 1200) {
+            showErrorModal(
+              "Validation Error",
+              "Marks exceed 600. Please select 1200 total marks if your maximum mark is 1200"
+            );
+            return;
+          }
+          if (isNaN(marks12Num) || marks12Num < 100 || marks12Num > 600) {
+            showErrorModal("Validation Error", "12th marks must be between 100 and 600");
+            return;
+          }
+        } else if (marks12Total === 1200) {
+          if (isNaN(marks12Num) || marks12Num < 100 || marks12Num > 1200) {
+            showErrorModal("Validation Error", "12th marks must be between 100 and 1200");
+            return;
+          }
+        }
+      }
+
+      if (yearErrors.passedOutYear10 || yearErrors.passedOutYear12) {
+        showErrorModal("Validation Error", yearErrors.passedOutYear10 || yearErrors.passedOutYear12);
+        return;
+      }
+
+      if (educationPath === "12th") {
+        if (formData.passedOutYear10 && formData.passedOutYear12) {
+          const gapInfo = calculate10to12Gap(formData.passedOutYear10, formData.passedOutYear12);
+          if (gapInfo && gapInfo.isInvalid) {
+            showErrorModal("Validation Error", `12th completion year cannot be before expected year (${gapInfo.expected12th})`);
+            return;
+          }
+        }
+      }
+
+      const eligibleGaps = calculateEligibleCareerGaps({
+        passedOutYear10: formData.passedOutYear10,
+        passedOutYear12: formData.passedOutYear12,
+        educationPath,
+        courses: formData.courses,
+      });
+
+      const missingReasonGap = eligibleGaps.find(
+        (g) => !(careerGapReasons[g.educationStage] || (eligibleGaps.length === 1 && careerGapReasonInput.trim()))
+      );
+
+      if (missingReasonGap) {
+        setActiveGapStage(missingReasonGap.educationStage);
+        setCareerGapReasonInput(careerGapReasons[missingReasonGap.educationStage] || "");
+        setShowCareerGapModal(true);
+        showErrorModal(
+          "Career Gap Reason Required",
+          `A career gap of ${missingReasonGap.gapDuration} year(s) was detected for ${missingReasonGap.educationStage}. Please provide the reason before saving.`
+        );
+        return;
+      }
     }
 
     if (canEditField("aadhaarNo") && (kycErrors.aadhaarNo || (formData.aadhaarNo && !formData.aadhaarNo.includes("X") && !/^\d{12}$/.test(formData.aadhaarNo)))) {
@@ -2573,30 +3868,33 @@ const EmployeeDetails = ({ isAdmin = false }) => {
       return;
     }
 
-    if (bankErrors.ifscCode) {
-      showErrorModal("Validation Error", "Fix IFSC code before saving");
-      return;
-    }
+    const isBankEditable = canEditField("bank") || canEditField("bankName") || canEditField("accountNumber") || canEditField("ifscCode");
+    if (isBankEditable) {
+      if (bankErrors.ifscCode) {
+        showErrorModal("Validation Error", "Fix IFSC code before saving");
+        return;
+      }
 
-    if (
-      formData.ifscCode &&
-      !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(formData.ifscCode)
-    ) {
-      showErrorModal("Validation Error", "Invalid IFSC format");
-      return;
-    }
+      if (
+        formData.ifscCode &&
+        !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(formData.ifscCode)
+      ) {
+        showErrorModal("Validation Error", "Invalid IFSC format");
+        return;
+      }
 
-    if (bankErrors.accountNumber) {
-      showErrorModal("Validation Error", "Fix Account Number before saving");
-      return;
-    }
+      if (bankErrors.accountNumber) {
+        showErrorModal("Validation Error", "Fix Account Number before saving");
+        return;
+      }
 
-    if (
-      formData.accountNumber &&
-      (formData.accountNumber.length < 9 || formData.accountNumber.length > 18)
-    ) {
-      showErrorModal("Validation Error", "Account number must be 9–18 digits");
-      return;
+      if (
+        formData.accountNumber &&
+        (formData.accountNumber.length < 9 || formData.accountNumber.length > 18)
+      ) {
+        showErrorModal("Validation Error", "Account number must be 9–18 digits");
+        return;
+      }
     }
 
     if (isHrRestrictedFromEdit) {
@@ -2610,16 +3908,18 @@ const EmployeeDetails = ({ isAdmin = false }) => {
       return;
     }
 
-    for (const course of formData.courses) {
-      const cgpaError = validateCgpa(course.cgpa);
-      const yearError = validateYearRange(course.passedOutYear, course.courseType);
+    if (canEditField("courses")) {
+      for (const course of (formData.courses || [])) {
+        const cgpaError = validateCgpa(course.cgpa);
+        const yearError = validateYearRange(course.passedOutYear, course.courseType);
 
-      if (cgpaError || yearError) {
-        showErrorModal(
-          "Validation Error",
-          yearError || `Invalid data in course: ${course.courseName || "Unnamed"}`
-        );
-        return;
+        if (cgpaError || yearError) {
+          showErrorModal(
+            "Validation Error",
+            yearError || `Invalid data in course: ${course.courseName || "Unnamed"}`
+          );
+          return;
+        }
       }
     }
 
@@ -2634,27 +3934,27 @@ const EmployeeDetails = ({ isAdmin = false }) => {
       for (let i = 0; i < certifications.length; i++) {
         const c = certifications[i];
         if (!c.courseName?.trim()) {
-          showErrorModal("Validation Error", `Certification #${i + 1}: Course Name is required.`);
+          showErrorModal("Validation Error", `Certification ${i + 1}: Course Name is required.`);
           return;
         }
         if (!c.startMonthYear) {
-          showErrorModal("Validation Error", `Certification #${i + 1}: Start Month and Year is required.`);
+          showErrorModal("Validation Error", `Certification ${i + 1}: Start Month and Year is required.`);
           return;
         }
         if (!c.endMonthYear) {
-          showErrorModal("Validation Error", `Certification #${i + 1}: End Month and Year is required.`);
+          showErrorModal("Validation Error", `Certification ${i + 1}: End Month and Year is required.`);
           return;
         }
         if (c.startMonthYear && c.endMonthYear && c.startMonthYear > c.endMonthYear) {
-          showErrorModal("Validation Error", `Certification #${i + 1}: End Month and Year must be after or same as Start Month and Year.`);
+          showErrorModal("Validation Error", `Certification ${i + 1}: End Month and Year must be after or same as Start Month and Year.`);
           return;
         }
         if (!c.courseType?.trim()) {
-          showErrorModal("Validation Error", `Certification #${i + 1}: Course Type is required.`);
+          showErrorModal("Validation Error", `Certification ${i + 1}: Course Type is required.`);
           return;
         }
         if (!c.institutionName?.trim()) {
-          showErrorModal("Validation Error", `Certification #${i + 1}: Institution / College Name is required.`);
+          showErrorModal("Validation Error", `Certification ${i + 1}: Institution / College Name is required.`);
           return;
         }
       }
@@ -2663,148 +3963,10 @@ const EmployeeDetails = ({ isAdmin = false }) => {
     try {
       setIsSaving(true);
 
-      let safeStatus = formData.status;
-
-      if (Array.isArray(safeStatus)) {
-        safeStatus = safeStatus[0];
-      }
-
-      if (typeof safeStatus === "string") {
-        safeStatus = safeStatus.toLowerCase().trim();
-      }
-
-      let safeDateRelieved = formData.dateRelieved;
-
-      if (safeStatus !== "relieved") {
-        safeDateRelieved = "";
-      }
-
-      const form = new FormData();
-
-      const textFields = [
-        "name", "email", "role",
-        "dob", "gender", "phone", "emergencyContact",
-        "bloodGroup", "address", "fatherName", "motherName",
-        "fatherOccupation", "motherOccupation", "department",
-        "designation", "status", "dateRelieved", "experience", "salary",
-        "school10", "marks10", "passedOutYear10", "school12", "marks12", "passedOutYear12",
-        "aadhaarNo", "panNo", "uanNo", "pfNo",
-        "bankName", "accountHolder", "accountNumber", "ifscCode", "branch", "toDate",
-      ];
-
-      textFields.forEach((field) => {
-        if (
-          (
-            field !== "dateRelieved"
-              ? (isAdmin || canEditField(field))
-              : isAdmin
-          ) &&
-          formData[field] !== undefined &&
-          formData[field] !== null
-        ) {
-          let value = formData[field];
-
-          if (field === "status") {
-            value = safeStatus;
-          }
-
-          if (field === "dateRelieved") {
-            value = safeDateRelieved;
-          }
-
-          if (value !== "") {
-            form.append(field, value);
-          }
-        }
+      const isSubmittingToAdmin = !effectiveIsAdmin;
+      const { form, safeStatus, safeDateRelieved, careerGapsPayload } = buildSaveFormData({
+        submitForApproval: isSubmittingToAdmin,
       });
-
-      if (isAdmin || canEditField("siblings")) {
-        form.append("siblings", JSON.stringify(formData.siblings || []));
-      }
-
-      if (isAdmin || canEditField("previousExperiences")) {
-        form.append("previousExperiences", JSON.stringify(formData.previousExperiences || []));
-      }
-
-      if (isAdmin || canEditField("courses")) {
-        const coursesPayload = (formData.courses || []).map((c) => {
-          const { certificate, certificateUrl, ...rest } = c;
-          return {
-            ...rest,
-            certificate: typeof certificate === "string" && certificate.trim() !== "" ? certificate : undefined,
-          };
-        });
-        form.append("courses", JSON.stringify(coursesPayload));
-      }
-
-      // Career Gap Payload (Eligible transitions only) - only saved when positive gap + reason provided
-      let careerGapsPayload = [];
-      const eligibleGaps = calculateEligibleCareerGaps({
-        passedOutYear10: formData.passedOutYear10,
-        passedOutYear12: formData.passedOutYear12,
-        educationPath,
-        courses: formData.courses,
-      });
-
-      careerGapsPayload = eligibleGaps
-        .map((g) => {
-          const reason =
-            careerGapReasons[g.educationStage] ||
-            (eligibleGaps.length === 1 ? careerGapReasonInput.trim() : "") ||
-            (Array.isArray(formData.careerGaps) ? formData.careerGaps.find((cg) => cg && cg.educationStage === g.educationStage)?.reason : "");
-          return {
-            ...g,
-            reason: (reason || "").trim(),
-          };
-        })
-        .filter((g) => g.gapDuration > 0 && g.reason.length > 0);
-
-      form.append("careerGaps", JSON.stringify(careerGapsPayload));
-
-      form.append("educationPath", educationPath);
-
-      // Include additional certifications
-      form.append("hasCertifications", hasCertifications || "no");
-      if (hasCertifications === "yes" && certifications.length > 0) {
-        const certsPayload = certifications.map(({ certificateFile, certificateUrl, ...rest }) => rest);
-        form.append("professionalCertifications", JSON.stringify(certsPayload));
-        certifications.forEach((cert, idx) => {
-          if (cert.certificateFile instanceof File) {
-            form.append(`cert_${idx}_certificate`, cert.certificateFile);
-          }
-        });
-      } else {
-        form.append("professionalCertifications", JSON.stringify([]));
-      }
-
-      const singleFiles = [
-        { field: "picture", data: formData.picture },
-        { field: "marksheet10", data: formData.marksheet10 },
-        { field: "marksheet12", data: formData.marksheet12 },
-        { field: "aadhaarFile", data: formData.aadhaarFile },
-        { field: "panFile", data: formData.panFile },
-        { field: "passbookFile", data: formData.passbookFile },
-      ];
-
-      singleFiles.forEach(({ field, data }) => {
-        if ((isAdmin || canEditField(field)) && data instanceof File) {
-          form.append(field, data);
-        }
-      });
-
-      if ((isAdmin || canEditField("courses")) && formData.courses?.length) {
-        formData.courses.forEach((course, idx) => {
-          if (course.certificate instanceof File) {
-            if (course.id) {
-              form.append(`course_${course.id}_certificate`, course.certificate);
-            }
-            if (course._id) {
-              form.append(`course_${course._id}_certificate`, course.certificate);
-            }
-            form.append(`course_${idx}_certificate`, course.certificate);
-          }
-        });
-      }
 
       // If user is HR (not Super Admin), submit changes for Admin approval
       if (isAdmin && user?.isHr && user?.role !== "admin") {
@@ -2920,12 +4082,30 @@ const EmployeeDetails = ({ isAdmin = false }) => {
           console.error("Session sync error:", e);
         }
 
-        const successMsg = response.data.message || (approvalStatus === "rejected"
-          ? "Profile re-submitted for Admin review and approval successfully!"
-          : "Your changes have been saved successfully.");
+        const empUniqueId =
+          response.data.employeeDetailsId ||
+          response.data.detailsId ||
+          response.data.data?.employeeDetailsId ||
+          response.data.data?._id ||
+          formData?.employeeDetailsId ||
+          formData?.detailsId ||
+          formData?._id ||
+          formData?.empId ||
+          empId ||
+          user?._id;
+        if (empUniqueId && reached100) {
+          sessionStorage.removeItem(`onboarding_step_${empUniqueId}`);
+          sessionStorage.removeItem("onboarding_user_id");
+        }
+
+        const successMsg = response.data.message || (!effectiveIsAdmin
+          ? "Profile submitted to Admin for approval successfully!"
+          : (approvalStatus === "rejected"
+            ? "Profile re-submitted for Admin review and approval successfully!"
+            : "Your changes have been saved successfully."));
 
         showSuccessModal(
-          approvalStatus === "rejected" ? "Resubmitted for Review" : "Profile Updated",
+          !effectiveIsAdmin ? "Submitted for Admin Approval" : (approvalStatus === "rejected" ? "Resubmitted for Review" : "Profile Updated"),
           successMsg,
           !isAdmin
         );
@@ -3464,74 +4644,152 @@ const EmployeeDetails = ({ isAdmin = false }) => {
               </div>
             )}
 
-            {/* ===== BASIC DETAILS ===== */}
-            {visibleSections.includes("basic") && (
-              <>
-                <h6 className="employeedetails-section-title">Basic Details</h6>
-                <div className="employeedetails-row">
-                  <LockedField label="Employee ID" value={formData.empIdString} editable={false} visible={isAdmin || formData.isProfileCompleted === false} />
+            {/* ================= 7-STEP ONBOARDING WIZARD HEADER & NAVIGATION ================= */}
+            {!isRestrictedEditMode && (
+            <div className="onboarding-wizard-container">
+              <div className="onboarding-wizard-header">
+                <div>
+                  <h5 className="onboarding-wizard-title">
+                  Employee Details
+                  </h5>
+                  <p className="onboarding-wizard-subtitle">
+                    Step {visibleSteps.findIndex((s) => s.id === activeStep) + 1} of {visibleSteps.length}:{" "}
+                    <strong style={{ color: "#2563eb" }}>
+                      {visibleSteps.find((s) => s.id === activeStep)?.title || ONBOARDING_STEPS.find((s) => s.id === activeStep)?.title}
+                    </strong>
+                  </p>
+                </div>
 
+                <div className="onboarding-wizard-legend" aria-label="Completion Status Legend">
+                  <span className="legend-item legend-item-complete" title="All applicable fields completed">
+                    <span className="legend-dot legend-dot-complete" /> Complete
+                  </span>
+                  <span className="legend-item legend-item-partial" title="Some applicable fields completed">
+                    <span className="legend-dot legend-dot-partial" /> Partially Complete
+                  </span>
+                  <span className="legend-item legend-item-incomplete" title="No applicable fields completed">
+                    <span className="legend-dot legend-dot-incomplete" /> Incomplete
+                  </span>
+                </div>
+              </div>
+
+              <div className="onboarding-stepper-container">
+                <div className="onboarding-stepper-progress-track">
+                  <div
+                    className="onboarding-stepper-progress-fill"
+                    style={{
+                      width: `${visibleSteps.length > 1 ? (Math.max(0, visibleSteps.findIndex((s) => s.id === activeStep)) / (visibleSteps.length - 1)) * 100 : 100}%`,
+                    }}
+                  />
+                </div>
+
+                <div className="onboarding-stepper" role="tablist" aria-label="Onboarding Steps">
+                  {visibleSteps.map((step, idx) => {
+                    const status = getStepStatus(step.id);
+                    const isActive = activeStep === step.id;
+                    const currentIndex = visibleSteps.findIndex((s) => s.id === activeStep);
+                    const isPassed = idx < currentIndex;
+                    const statusLabel =
+                      status === "complete"
+                        ? "Complete"
+                        : status === "partial"
+                        ? "Partially Complete"
+                        : "Incomplete";
+
+                    return (
+                      <button
+                        key={step.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        className={`onboarding-step-tab ${isActive ? "active" : ""} ${isPassed ? "passed" : ""} status-${status}`}
+                        onClick={() => handleStepNavigation(step.id)}
+                        disabled={isSaving}
+                        title={`Step ${idx + 1}: ${step.title} (${statusLabel})`}
+                      >
+                        <div className="step-circle">
+                          <span className="step-number">{isRestrictedEditMode ? idx + 1 : step.id}</span>
+                          <span
+                            className={`step-status-indicator status-dot status-${status}`}
+                            title={statusLabel}
+                            aria-label={statusLabel}
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            )}
+
+            {/* ================= STEP 1: PERSONAL DETAILS ================= */}
+            {(isRestrictedEditMode ? isStepVisible(1) : activeStep === 1) && (
+              <div className="onboarding-step-content step-1-personal">
+                <div className="onboarding-step-header mb-4">
+                  <h6 className="employeedetails-section-title mb-1">{isRestrictedEditMode ? "Personal Details" : "Step 1: Personal Details"}</h6>
+                  <p className="text-muted small mb-0">Enter your official identification, contact, and residential information.</p>
+                </div>
+                <div className="employeedetails-row">
+                  {/* 1. Employee Name */}
                   <LockedField
-                    label="Name"
+                    label="Employee Name"
                     value={formData.name}
                     editable={effectiveIsAdmin}
-                    visible={canEditField("name")}
+                    visible={isFieldVisible("name")}
                     onChange={(v) => handleChange("name", v)}
                   />
 
+                  {/* 2. Employee ID */}
                   <LockedField
-                    label="Email"
+                    label="Employee ID"
+                    value={formData.empIdString}
+                    editable={false}
+                    visible={isAdmin || (!isRestrictedEditMode && formData.isProfileCompleted === false)}
+                  />
+
+                  {/* 3. Email Address */}
+                  <LockedField
+                    label="Email Address"
                     value={formData.email}
                     editable={effectiveIsAdmin}
-                    visible={canEditField("email")}
+                    visible={isFieldVisible("email")}
                     onChange={(v) => handleChange("email", v)}
                   />
 
-                  {effectiveIsAdmin ? (
-                    <DetailSelect
-                      id="field-wrapper-status"
-                      label="Status"
-                      value={formData.status}
-                      onChange={(v) => handleChange("status", v.toLowerCase())}
-                      options={[
-                        { label: "Full-time", value: "full_time" },
-                        { label: "Part-time", value: "part_time" },
-                        { label: "Relieved", value: "relieved" },
-                      ]}
-                      disabled={false}
-                      visible={canEditField("status")}
-                    />
-                  ) : (
-                    <LockedField id="field-wrapper-status" label="Status" value={formData.status} editable={false} visible={true} />
-                  )}
+                  {/* 4. Phone Number */}
+                  <LockedField
+                    id="field-wrapper-phone"
+                    label="Phone Number"
+                    value={formData.phone}
+                    editable={isAdmin || canEditField("phone")}
+                    onChange={(v) => handleChange("phone", v.replace(/\D/g, "").slice(0, 10))}
+                    visible={isFieldVisible("phone")}
+                  />
 
-                  {effectiveIsAdmin && (formData.status === "relieved" || formData.dateRelieved) && (
-                    <DetailInput
-                      type="date"
-                      label="Date Relieved"
-                      value={formData.dateRelieved}
-                      onChange={(v) => handleChange("dateRelieved", v)}
-                      visible={true}
-                    />
-                  )}
-                </div>
-                <Divider />
-              </>
-            )}
+                  {/* 5. Gender */}
+                  <DetailSelect
+                    id="field-wrapper-gender"
+                    label="Gender"
+                    className="gender-field-custom"
+                    value={formData.gender}
+                    onChange={(v) => handleChange("gender", v)}
+                    options={[
+                      { label: "Male", value: "Male" },
+                      { label: "Female", value: "Female" },
+                      { label: "Other", value: "Other" },
+                    ]}
+                    disabled={!canEditField("gender")}
+                    visible={isFieldVisible("gender")}
+                  />
 
-            {/* ===== PERSONAL & FAMILY DETAILS ===== */}
-            {(visibleSections.includes("personal") || visibleSections.includes("family")) && (
-              <>
-                <h6 className="employeedetails-section-title">
-                  {visibleSections.includes("personal") && visibleSections.includes("family")
-                    ? "Personal & Family Details"
-                    : visibleSections.includes("family")
-                      ? "Family Details"
-                      : "Personal Details"}
-                </h6>
-                <div className="employeedetails-row">
-                  <div id="field-wrapper-dob" className="employeedetails-col-md-6 employeedetails-mb-4 dob-field-custom" style={{ display: canEditField("dob") ? "block" : "none" }}>
-                    <label className="employeedetails-detail-label">DOB</label>
+                  {/* 6. Date of Birth */}
+                  <div
+                    id="field-wrapper-dob"
+                    className="employeedetails-col-md-6 employeedetails-mb-4 dob-field-custom"
+                    style={{ display: isFieldVisible("dob") ? "block" : "none" }}
+                  >
+                    <label className="employeedetails-detail-label">Date of Birth</label>
                     <div style={{ position: "relative", width: "100%" }}>
                       <style>
                         {`
@@ -3573,31 +4831,71 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                       />
                     </div>
                   </div>
+
+                  {/* 7. Blood Group */}
                   <DetailSelect
-                    id="field-wrapper-gender"
-                    label="Gender"
-                    className="gender-field-custom"
-                    value={formData.gender}
-                    onChange={(v) => handleChange("gender", v)}
-                    options={[
-                      { label: "Male", value: "Male" },
-                      { label: "Female", value: "Female" },
-                      { label: "Other", value: "Other" },
-                    ]}
-                    disabled={!canEditField("gender")} visible={canEditField("gender")}
-                  />
-                  <LockedField
-                    id="field-wrapper-phone"
-                    label="Phone"
-                    value={formData.phone}
-                    editable={isAdmin || canEditField("phone")}
-                    onChange={(v) => handleChange("phone", v.replace(/\D/g, "").slice(0, 10))}
-                    visible={canEditField("phone")}
+                    id="field-wrapper-bloodGroup"
+                    label="Blood Group"
+                    value={formData.bloodGroup}
+                    onChange={(v) => handleChange("bloodGroup", v)}
+                    options={["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((b) => ({
+                      label: b,
+                      value: b,
+                    }))}
+                    disabled={!canEditField("bloodGroup")}
+                    visible={isFieldVisible("bloodGroup")}
                   />
 
-                  {canEditField("emergencyContact") && (
+                  {/* 8. Employment Status */}
+                  {effectiveIsAdmin ? (
+                    <DetailSelect
+                      id="field-wrapper-status"
+                      label="Employment Status"
+                      value={formData.status}
+                      onChange={(v) => handleChange("status", v.toLowerCase())}
+                      options={[
+                        { label: "Full-time", value: "full_time" },
+                        { label: "Part-time", value: "part_time" },
+                        { label: "Relieved", value: "relieved" },
+                      ]}
+                      disabled={false}
+                      visible={isFieldVisible("status")}
+                    />
+                  ) : (
+                    <LockedField
+                      id="field-wrapper-status"
+                      label="Employment Status"
+                      value={formData.status}
+                      editable={false}
+                      visible={isFieldVisible("status")}
+                    />
+                  )}
+
+                  {effectiveIsAdmin && (formData.status === "relieved" || formData.dateRelieved) && (
+                    <DetailInput
+                      type="date"
+                      label="Date Relieved"
+                      value={formData.dateRelieved}
+                      onChange={(v) => handleChange("dateRelieved", v)}
+                      visible={isFieldVisible("status")}
+                    />
+                  )}
+
+                  {/* 9. Residential Address */}
+                  <DetailInput
+                    id="field-wrapper-address"
+                    full
+                    label="Residential Address"
+                    value={formData.address}
+                    onChange={(v) => handleChange("address", v)}
+                    disabled={!canEditField("address")}
+                    visible={isFieldVisible("address")}
+                  />
+
+                  {/* 10. Emergency Contact Number */}
+                  {isFieldVisible("emergencyContact") && (
                     <div id="field-wrapper-emergencyContact" className="employeedetails-col-md-6 employeedetails-mb-4">
-                      <div className="employeedetails-detail-label">Emergency Contact</div>
+                      <div className="employeedetails-detail-label">Emergency Contact Number</div>
                       <div className="employeedetails-field-wrapper">
                         <input
                           type="text"
@@ -3618,383 +4916,408 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
 
-                  <DetailSelect
-                    id="field-wrapper-bloodGroup"
-                    label="Blood Group"
-                    value={formData.bloodGroup}
-                    onChange={(v) => handleChange("bloodGroup", v)}
-                    options={["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((b) => ({
-                      label: b,
-                      value: b,
-                    }))}
-                    disabled={!canEditField("bloodGroup")} visible={canEditField("bloodGroup")}
-                  />
-                  <DetailInput
-                    id="field-wrapper-address"
-                    full
-                    label="Address"
-                    value={formData.address}
-                    onChange={(v) => handleChange("address", v)}
-                    disabled={!canEditField("address")} visible={canEditField("address")}
-                  />
+            {/* ================= STEP 2: FAMILY DETAILS ================= */}
+            {(isRestrictedEditMode ? isStepVisible(2) : activeStep === 2) && (
+              <div className="onboarding-step-content step-2-family">
+                <div className="onboarding-step-header mb-4">
+                  <h6 className="employeedetails-section-title mb-1">{isRestrictedEditMode ? "Family Details" : "Step 2: Family Details"}</h6>
+                  <p className="text-muted small mb-0">Provide parents' information and add sibling entries where applicable.</p>
+                </div>
+                <div className="employeedetails-row">
+                  {/* 1. Father's Name */}
                   <DetailInput
                     id="field-wrapper-fatherName"
                     label="Father's Name"
                     value={formData.fatherName}
                     onChange={(v) => handleChange("fatherName", v)}
-                    disabled={!canEditField("fatherName")} visible={canEditField("fatherName")}
+                    disabled={!canEditField("fatherName")}
+                    visible={isFieldVisible("fatherName")}
                   />
+                  {/* 2. Father's Occupation */}
                   <DetailInput
                     id="field-wrapper-fatherOccupation"
                     label="Father's Occupation"
                     value={formData.fatherOccupation}
                     onChange={(v) => handleChange("fatherOccupation", v)}
-                    disabled={!canEditField("fatherOccupation")} visible={canEditField("fatherOccupation")}
+                    disabled={!canEditField("fatherOccupation")}
+                    visible={isFieldVisible("fatherOccupation")}
                   />
+                  {/* 3. Mother's Name */}
                   <DetailInput
                     id="field-wrapper-motherName"
                     label="Mother's Name"
                     value={formData.motherName}
                     onChange={(v) => handleChange("motherName", v)}
-                    disabled={!canEditField("motherName")} visible={canEditField("motherName")}
+                    disabled={!canEditField("motherName")}
+                    visible={isFieldVisible("motherName")}
                   />
+                  {/* 4. Mother's Occupation */}
                   <DetailInput
                     id="field-wrapper-motherOccupation"
                     label="Mother's Occupation"
                     value={formData.motherOccupation}
                     onChange={(v) => handleChange("motherOccupation", v)}
-                    disabled={!canEditField("motherOccupation")} visible={canEditField("motherOccupation")}
+                    disabled={!canEditField("motherOccupation")}
+                    visible={isFieldVisible("motherOccupation")}
                   />
                 </div>
-                <Divider />
-              </>
+
+                {/* 5. Siblings Information */}
+                {isFieldVisible("siblings") && (
+                  <>
+                    {(isFieldVisible("fatherName") || isFieldVisible("fatherOccupation") || isFieldVisible("motherName") || isFieldVisible("motherOccupation")) && (
+                      <div className="employeedetails-education-divider my-4" />
+                    )}
+                    <div id="field-wrapper-siblings" className="employeedetails-siblings-section" style={{ position: "relative", zIndex: 20, overflow: "visible" }}>
+                      <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3 flex-wrap gap-2">
+                        <div>
+                          <h6 className="employeedetails-section-title employeedetails-mb-0">Siblings Information</h6>
+                          <p className="text-muted small mb-0">Add sibling entries if applicable.</p>
+                        </div>
+                        {canEditField("siblings") && (
+                          <button
+                            type="button"
+                            className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-primary"
+                            onClick={handleAddSibling}
+                          >
+                            + Add Sibling
+                          </button>
+                        )}
+                      </div>
+
+                      {formData.siblings && formData.siblings.length > 0 ? (
+                        <div className="employeedetails-siblings-list" style={{ position: "relative", zIndex: 20, overflow: "visible" }}>
+                          {formData.siblings.map((sibling, index) => (
+                            <div
+                              key={sibling.id || `sib-${index}`}
+                              className="employeedetails-sibling-item employeedetails-mb-3 employeedetails-p-3 employeedetails-border employeedetails-rounded"
+                              style={{
+                                position: "relative",
+                                zIndex: 100 - index,
+                                overflow: "visible",
+                                background: "#ffffff",
+                              }}
+                            >
+                              <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-2">
+                                <span style={{ fontSize: "13px", fontWeight: "600", color: "#475569" }}>
+                                  Sibling {index + 1}
+                                </span>
+                                {canEditField("siblings") && (
+                                  <button
+                                    type="button"
+                                    className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-danger"
+                                    onClick={() => handleRemoveSibling(index)}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+                              <div className="employeedetails-row" style={{ overflow: "visible", position: "relative" }}>
+                                <div className="employeedetails-col-md-4 employeedetails-mb-2" style={{ position: "relative", zIndex: 50, overflow: "visible" }}>
+                                  <div className="employeedetails-detail-label">Relationship</div>
+                                  <CustomDropdown
+                                    style={{ width: "100%", position: "relative", zIndex: 60 }}
+                                    placeholder="Select"
+                                    value={sibling.relationship || "Brother"}
+                                    onChange={(val) => handleSiblingChange(index, "relationship", val)}
+                                    options={[
+                                      { label: "Brother", value: "Brother" },
+                                      { label: "Sister", value: "Sister" },
+                                    ]}
+                                    disabled={!canEditField("siblings")}
+                                  />
+                                </div>
+                                <div className="employeedetails-col-md-4 employeedetails-mb-2">
+                                  <div className="employeedetails-detail-label">Name</div>
+                                  <input
+                                    className={`employeedetails-detail-input ${!canEditField("siblings") ? "employeedetails-input-locked" : ""}`}
+                                    type="text"
+                                    placeholder="Sibling name"
+                                    value={sibling.name || ""}
+                                    onChange={(e) => handleSiblingChange(index, "name", e.target.value)}
+                                    disabled={!canEditField("siblings")}
+                                    readOnly={!canEditField("siblings")}
+                                  />
+                                </div>
+                                <div className="employeedetails-col-md-4 employeedetails-mb-2">
+                                  <div className="employeedetails-detail-label">Occupation</div>
+                                  <input
+                                    className={`employeedetails-detail-input ${!canEditField("siblings") ? "employeedetails-input-locked" : ""}`}
+                                    type="text"
+                                    placeholder="Sibling occupation"
+                                    value={sibling.occupation || ""}
+                                    onChange={(e) => handleSiblingChange(index, "occupation", e.target.value)}
+                                    disabled={!canEditField("siblings")}
+                                    readOnly={!canEditField("siblings")}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-muted small p-3 bg-light rounded text-center border">
+                          No siblings added. Click <strong>"+ Add Sibling"</strong> if applicable.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
 
-            {/* ===== SIBLINGS ===== */}
-            {(visibleSections.includes("siblings") || visibleSections.includes("family")) && (
-              <>
-                <div id="field-wrapper-siblings" className="employeedetails-siblings-section">
-                  <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3">
-                    <h6 className="employeedetails-section-title employeedetails-mb-0">Siblings</h6>
-                    {canEditField("siblings") && (
-                      <button
-                        className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-primary"
-                        onClick={() => setShowAddSibling(!showAddSibling)}
-                      >
-                        {showAddSibling ? "Cancel" : "+ Add Sibling"}
-                      </button>
-                    )}
-                  </div>
 
-                  {showAddSibling && canEditField("siblings") && (
-                    <div className="employeedetails-add-sibling-form employeedetails-mb-4 employeedetails-p-3 employeedetails-border employeedetails-rounded">
-                      <div className="employeedetails-row">
-                        <div className="employeedetails-col-md-4 employeedetails-mb-3">
-                          <div className="employeedetails-detail-label">Relationship</div>
-                          <CustomDropdown
-                            style={{ width: "100%" }}
-                            placeholder="Select"
-                            value={newSibling.relationship}
-                            onChange={(val) =>
-                              setNewSibling((prev) => ({ ...prev, relationship: val }))
-                            }
-                            options={[
-                              { label: "Brother", value: "Brother" },
-                              { label: "Sister", value: "Sister" }
-                            ]}
-                          />
-                        </div>
-                        <div className="employeedetails-col-md-4 employeedetails-mb-3">
-                          <div className="employeedetails-detail-label">Name</div>
-                          <input
-                            className="employeedetails-detail-input"
-                            type="text"
-                            value={newSibling.name || ""}
-                            onChange={(e) => setNewSibling((prev) => ({ ...prev, name: e.target.value }))}
-                          />
-                        </div>
-                        <div className="employeedetails-col-md-4 employeedetails-mb-3">
-                          <div className="employeedetails-detail-label">Occupation</div>
-                          <input
-                            className="employeedetails-detail-input"
-                            type="text"
-                            value={newSibling.occupation || ""}
-                            onChange={(e) => setNewSibling((prev) => ({ ...prev, occupation: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-                      <div className="employeedetails-d-flex employeedetails-justify-content-end">
-                        <button
-                          className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-primary"
-                          onClick={handleAddSibling}
-                        >
-                          Click to save
-                        </button>
-                      </div>
-                    </div>
-                  )}
+            {/* ================= STEP 3: WORK DETAILS ================= */}
+            {(isRestrictedEditMode ? isStepVisible(3) : activeStep === 3) && (
+              <div className="onboarding-step-content step-3-work">
+                <div className="onboarding-step-header mb-4">
+                  <h6 className="employeedetails-section-title mb-1">{isRestrictedEditMode ? "Work Details" : "Step 3: Work Details"}</h6>
+                  <p className="text-muted small mb-0">Current organization role and prior professional work experience.</p>
+                </div>
 
-                  {formData.siblings.length > 0 && (
-                    <div className="employeedetails-siblings-list">
-                      {formData.siblings.map((sibling, index) => (
-                        <div
-                          key={sibling.id || `sib-${index}`}
-                          className="employeedetails-sibling-item employeedetails-mb-3 employeedetails-p-3 employeedetails-border employeedetails-rounded"
-                        >
-                          <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center">
-                            <div>
-                              <strong>
-                                {sibling.relationship}: {sibling.name}
-                              </strong>
-                              <p className="employeedetails-mb-0 employeedetails-text-muted">
-                                Occupation: {sibling.occupation}
-                              </p>
-                            </div>
-                            {canEditField("siblings") && (
-                              <button
-                                className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-danger"
-                                onClick={() => handleRemoveSibling(index)}
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                <div className="employeedetails-row">
+                  {/* 1. Department */}
+                  <LockedField
+                    label="Department"
+                    value={formData.department}
+                    editable={effectiveIsAdmin}
+                    visible={isFieldVisible("department")}
+                    onChange={(v) => handleChange("department", v)}
+                  />
+
+                  {/* 2. Designation */}
+                  <LockedField
+                    label="Designation"
+                    value={formData.designation}
+                    editable={effectiveIsAdmin}
+                    visible={isFieldVisible("designation")}
+                    onChange={(v) => handleChange("designation", v)}
+                  />
+
+                  {/* 3. Employment Type */}
+                  {effectiveIsAdmin ? (
+                    <DetailSelect
+                      label="Employment Type"
+                      value={formData.status}
+                      onChange={(v) => handleChange("status", v.toLowerCase())}
+                      options={[
+                        { label: "Full-time", value: "full_time" },
+                        { label: "Part-time", value: "part_time" },
+                        { label: "Relieved", value: "relieved" },
+                      ]}
+                      visible={isFieldVisible("status")}
+                    />
+                  ) : (
+                    <LockedField label="Employment Type" value={formData.status} editable={false} visible={isFieldVisible("status")} />
                   )}
                 </div>
-                <Divider />
-              </>
-            )}
 
-            {/* ===== WORKING DETAILS ===== */}
-            {(visibleSections.includes("working") || visibleSections.includes("work")) && (
-              <>
-                <div className="employeedetails-working-details-section">
-                  <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3">
-                    <h6 className="employeedetails-section-title employeedetails-mb-0">
-                      Working / Employment Details
-                    </h6>
-                    {canEditField("previousExperiences") && (
-                      <button
-                        className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-primary"
-                        onClick={handleAddPreviousExperience}
-                      >
-                        + Add Previous Experience
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="employeedetails-row">
-                    <LockedField
-                      label="Department"
-                      value={formData.department}
-                      editable={effectiveIsAdmin}
-                      visible={canEditField("department")}
-                      onChange={(v) => handleChange("department", v)}
-                    />
-
-                    <LockedField
-                      label="Designation"
-                      value={formData.designation}
-                      editable={effectiveIsAdmin}
-                      visible={canEditField("designation")}
-                      onChange={(v) => handleChange("designation", v)}
-                    />
-
-                    {effectiveIsAdmin ? (
-                      <DetailSelect
-                        label="Status"
-                        value={formData.status}
-                        onChange={(v) => handleChange("status", v.toLowerCase())}
-                        options={[
-                          { label: "Full-time", value: "full_time" },
-                          { label: "Part-time", value: "part_time" },
-                          { label: "Relieved", value: "relieved" },
-                        ]}
-                        visible={canEditField("status")}
-                      />
-                    ) : (
-                      <LockedField label="Status" value={formData.status} editable={false} visible={true} />
+                {isFieldVisible("previousExperiences") && (
+                  <>
+                    {(isFieldVisible("department") || isFieldVisible("designation") || isFieldVisible("status")) && (
+                      <div className="employeedetails-education-divider my-4" />
                     )}
 
-                    {/* {canEditField("experience") && (
-                      <div className="employeedetails-col-md-6 employeedetails-mb-4">
-                        <div className="employeedetails-detail-label">Experience (years)</div>
-
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="Enter years (e.g. 2 or 2.5)"
-                          value={formData.experience || ""}
-                          onChange={(e) => handleExperienceChange(e.target.value)}
-                          onKeyDown={handleNumberKeyDown}
-                          className={`employeedetails-detail-input ${!canEditField("experience") ? "employeedetails-input-locked" : ""
-                            }`}
-                          disabled={!canEditField("experience")}
-                          readOnly={!canEditField("experience")}
-                        />
+                    {/* 4. Previous Work Experience — Yes/No Radio Buttons */}
+                    <div className="onboarding-work-exp-toggle mb-4 p-3 bg-light rounded border">
+                      <div className="employeedetails-detail-label" style={{ fontWeight: "600", fontSize: "14px", color: "#1f2937" }}>
+                        Previous Work Experience <span style={{ color: "#ef4444" }}>*</span>
                       </div>
-                    )} */}
+                      <p className="text-muted small mb-2">Do you have previous work experience?</p>
+                      <div style={{ display: "flex", gap: "24px", marginTop: "8px", alignItems: "center" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "14px", fontWeight: "600", color: hasPreviousExperience === "yes" ? "#2563eb" : "#4b5563" }}>
+                          <input
+                            type="radio"
+                            name="hasPreviousExperience"
+                            value="yes"
+                            checked={hasPreviousExperience === "yes"}
+                            onChange={() => setHasPreviousExperience("yes")}
+                            style={{ accentColor: "#2563eb", width: "16px", height: "16px" }}
+                          />
+                          <span>Yes</span>
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "14px", fontWeight: "600", color: hasPreviousExperience === "no" ? "#2563eb" : "#4b5563" }}>
+                          <input
+                            type="radio"
+                            name="hasPreviousExperience"
+                            value="no"
+                            checked={hasPreviousExperience === "no"}
+                            onChange={() => setHasPreviousExperience("no")}
+                            style={{ accentColor: "#2563eb", width: "16px", height: "16px" }}
+                          />
+                          <span>No</span>
+                        </label>
+                      </div>
+                    </div>
 
-                    {/* <DetailInput
-                      type="number"
-                      label="Salary"
-                      value={formData.salary}
-                      onChange={(v) => handleChange("salary", v)}
-                      disabled={!canEditField("salary")}
-                      visible={true}
-                    /> */}
-                  </div>
-
-                  {formData.previousExperiences.length > 0 && (
-                    <div id="field-wrapper-previousExperiences" className="employeedetails-previous-experiences employeedetails-mt-4">
-                      <h6
-                        className="employeedetails-mb-3"
-                        style={{ fontSize: "16px", color: "#4a577f", fontWeight: "500" }}
-                      >
-                        Previous Experiences
-                      </h6>
-                      {formData.previousExperiences.map((exp, index) => (
-                        <div
-                          key={exp.id || `exp-${index}`}
-                          className="employeedetails-previous-experience-item employeedetails-mb-4 employeedetails-p-4 employeedetails-border employeedetails-rounded"
-                        >
-                          <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3">
-                            <h6
-                              className="employeedetails-mb-0"
-                              style={{ fontSize: "14px", color: "#1f2937" }}
-                            >
-                              Experience #{index + 1}
+                    {/* Conditional Previous Work Experience Section */}
+                    {hasPreviousExperience === "yes" && (
+                      <div id="field-wrapper-previousExperiences" className="employeedetails-previous-experiences employeedetails-mt-3">
+                        <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3">
+                          <div>
+                            <h6 className="employeedetails-section-title employeedetails-mb-0" style={{ fontSize: "16px" }}>
+                              Previous Experiences
                             </h6>
-                            {canEditField("previousExperiences") && (
-                              <button
-                                className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-danger"
-                                onClick={() => handleRemovePreviousExperience(index)}
-                              >
-                                Remove
-                              </button>
-                            )}
+                            <p className="text-muted small mb-0">Add details of your previous employers.</p>
                           </div>
-                          <div className="employeedetails-row">
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3">
-                              <DetailInput
-                                label="Company Name"
-                                value={exp.previousCompany}
-                                onChange={(v) =>
-                                  handlePreviousExperienceChange(index, "previousCompany", v)
-                                }
-                                disabled={!canEditField()} visible={canEditField()}
-                              />
-                            </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3">
-                              <label className="employeedetails-detail-label">Employment Status</label>
-                              <div style={!canEditField("previousExperiences") ? { pointerEvents: "none", opacity: 0.6 } : {}}>
-                                <CustomDropdown
-                                  style={{ width: "100%" }}
-                                  placeholder="Select"
-                                  value={exp.employmentType}
-                                  onChange={(val) =>
-                                    handlePreviousExperienceChange(
-                                      index,
-                                      "employmentType",
-                                      val
-                                    )
+                          {canEditField("previousExperiences") && (
+                            <button
+                              type="button"
+                              className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-primary"
+                              onClick={handleAddPreviousExperience}
+                            >
+                              + Add Previous Experience
+                            </button>
+                          )}
+                        </div>
+
+                        {formData.previousExperiences && formData.previousExperiences.length > 0 ? (
+                          formData.previousExperiences.map((exp, index) => (
+                            <div
+                              key={exp.id || `exp-${index}`}
+                              className="employeedetails-previous-experience-item employeedetails-mb-4 employeedetails-p-4 employeedetails-border employeedetails-rounded"
+                            >
+                              <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3">
+                                <h6
+                                  className="employeedetails-mb-0"
+                                  style={{ fontSize: "14px", color: "#1f2937", fontWeight: "600" }}
+                                >
+                                  Experience {index + 1}: {exp.previousCompany || "Company"}
+                                </h6>
+                                {canEditField("previousExperiences") && (
+                                  <button
+                                    type="button"
+                                    className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-danger"
+                                    onClick={() => handleRemovePreviousExperience(index)}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+                              <div className="employeedetails-row">
+                                <DetailInput
+                                  label="Company Name"
+                                  value={exp.previousCompany}
+                                  onChange={(v) =>
+                                    handlePreviousExperienceChange(index, "previousCompany", v)
                                   }
-                                  options={[
-                                    { label: "Full-time", value: "Full-time" },
-                                    { label: "Contract", value: "Contract" },
-                                    { label: "Part-time", value: "Part-time" },
-                                    { label: "Internship", value: "Internship" }
-                                  ]}
+                                  disabled={!canEditField("previousExperiences")}
+                                  visible={canEditField("previousExperiences")}
+                                />
+                                <div className="employeedetails-col-md-6 employeedetails-mb-4">
+                                  <div className="employeedetails-detail-label">Employment Status</div>
+                                  <div style={!canEditField("previousExperiences") ? { pointerEvents: "none", opacity: 0.6 } : {}}>
+                                    <CustomDropdown
+                                      style={{ width: "100%" }}
+                                      placeholder="Select"
+                                      value={exp.employmentType}
+                                      onChange={(val) =>
+                                        handlePreviousExperienceChange(
+                                          index,
+                                          "employmentType",
+                                          val
+                                        )
+                                      }
+                                      options={[
+                                        { label: "Full-time", value: "Full-time" },
+                                        { label: "Contract", value: "Contract" },
+                                        { label: "Part-time", value: "Part-time" },
+                                        { label: "Internship", value: "Internship" },
+                                      ]}
+                                    />
+                                  </div>
+                                </div>
+                                <DetailInput
+                                  label="Designation / Role"
+                                  value={exp.designation}
+                                  onChange={(v) =>
+                                    handlePreviousExperienceChange(index, "designation", v)
+                                  }
+                                  disabled={!canEditField("previousExperiences")}
+                                  visible={canEditField("previousExperiences")}
+                                />
+                                <DetailInput
+                                  label="Department"
+                                  value={exp.department}
+                                  onChange={(v) =>
+                                    handlePreviousExperienceChange(index, "department", v)
+                                  }
+                                  disabled={!canEditField("previousExperiences")}
+                                  visible={canEditField("previousExperiences")}
+                                />
+                                <DetailInput
+                                  type="date"
+                                  label="Date of Joining"
+                                  value={exp.dateOfJoining}
+                                  onChange={(v) =>
+                                    handlePreviousExperienceChange(index, "dateOfJoining", v)
+                                  }
+                                  disabled={!canEditField("previousExperiences")}
+                                  visible={canEditField("previousExperiences")}
+                                />
+                                <DetailInput
+                                  type="date"
+                                  label="Last Working Date"
+                                  value={exp.lastWorkingDate}
+                                  onChange={(v) =>
+                                    handlePreviousExperienceChange(index, "lastWorkingDate", v)
+                                  }
+                                  disabled={!canEditField("previousExperiences")}
+                                  visible={canEditField("previousExperiences")}
+                                />
+                                <DetailInput
+                                  label="Total Experience"
+                                  value={exp.totalExperience}
+                                  onChange={(v) =>
+                                    handlePreviousExperienceChange(index, "totalExperience", v)
+                                  }
+                                  placeholder="e.g. 1 Year 10 Months"
+                                  disabled={!canEditField("previousExperiences")}
+                                  visible={canEditField("previousExperiences")}
+                                />
+                                <DetailInput
+                                  type="text"
+                                  label="Salary of Previous Company"
+                                  value={exp.previousSalary}
+                                  onChange={(v) =>
+                                    handlePreviousExperienceChange(index, "previousSalary", v)
+                                  }
+                                  placeholder="e.g. 10,000"
+                                  disabled={!canEditField("previousExperiences")}
+                                  visible={canEditField("previousExperiences")}
                                 />
                               </div>
                             </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3">
-                              <DetailInput
-                                label="Designation / Role"
-                                value={exp.designation}
-                                onChange={(v) =>
-                                  handlePreviousExperienceChange(index, "designation", v)
-                                }
-                                disabled={!canEditField()} visible={canEditField()}
-                              />
-                            </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3">
-                              <DetailInput
-                                label="Department"
-                                value={exp.department}
-                                onChange={(v) =>
-                                  handlePreviousExperienceChange(index, "department", v)
-                                }
-                                disabled={!canEditField()} visible={canEditField()}
-                              />
-                            </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3">
-                              <DetailInput
-                                type="date"
-                                label="Date of Joining"
-                                value={exp.dateOfJoining}
-                                onChange={(v) =>
-                                  handlePreviousExperienceChange(index, "dateOfJoining", v)
-                                }
-                                disabled={!canEditField()} visible={canEditField()}
-                              />
-                            </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3">
-                              <DetailInput
-                                type="date"
-                                label="Last Working Date"
-                                value={exp.lastWorkingDate}
-                                onChange={(v) =>
-                                  handlePreviousExperienceChange(index, "lastWorkingDate", v)
-                                }
-                                disabled={!canEditField()} visible={canEditField()}
-                              />
-                            </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3">
-                              <DetailInput
-                                label="Total Experience"
-                                value={exp.totalExperience}
-                                onChange={(v) =>
-                                  handlePreviousExperienceChange(index, "totalExperience", v)
-                                }
-                                disabled={!canEditField()} visible={canEditField()}
-                              />
-                            </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3">
-                              <DetailInput
-                                type="number"
-                                label="Salary of Previous Company"
-                                value={exp.previousSalary}
-                                onChange={(v) =>
-                                  handlePreviousExperienceChange(index, "previousSalary", v)
-                                }
-                                disabled={!canEditField()} visible={canEditField()}
-                              />
-                            </div>
+                          ))
+                        ) : (
+                          <div className="text-muted small p-4 bg-light rounded text-center border">
+                            No previous experience records added yet. Click <strong>"+ Add Previous Experience"</strong> to add an entry.
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <Divider />
-              </>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             )}
 
-            {/* ===== EDUCATION DETAILS ===== */}
-            {visibleSections.includes("education") && (
-              <>
-                <h6 className="employeedetails-section-title">Education Details</h6>
+            {/* ================= STEP 4: EDUCATION ================= */}
+            {(isRestrictedEditMode ? isStepVisible(4) : activeStep === 4) && (
+              <div className="onboarding-step-content step-4-education">
+                <div className="onboarding-step-header mb-4">
+                  <h6 className="employeedetails-section-title mb-1">{isRestrictedEditMode ? "Education Details" : "Step 4: Education"}</h6>
+                  <p className="text-muted small mb-0">Academic qualifications from 10th standard onwards and career gap documentation.</p>
+                </div>
 
-                {(!isRejectedMode || canEditField("school10") || canEditField("marks10") || canEditField("passedOutYear10") || canEditField("marksheet10")) && (
+                {(!isRestrictedEditMode || isFieldVisible("school10") || isFieldVisible("marks10") || isFieldVisible("passedOutYear10") || isFieldVisible("marksheet10")) && (
                   <div className="employeedetails-education-group">
                     <div className="employeedetails-education-group-label">10th Standard</div>
                     <div className="employeedetails-row employeedetails-education-row">
-                      <div id="field-wrapper-school10" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("school10")) ? "block" : "none" }}>
+                      <div id="field-wrapper-school10" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("school10") ? "block" : "none" }}>
                         <div className="employeedetails-detail-label">10th School</div>
                         <input
                           className={`employeedetails-detail-input ${!canEditField("school10") ? "employeedetails-input-locked" : ""}`}
@@ -4006,7 +5329,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                         />
                       </div>
 
-                      <div id="field-wrapper-marks10" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("marks10")) ? "block" : "none" }}>
+                      <div id="field-wrapper-marks10" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("marks10") ? "block" : "none" }}>
                         <div className="employeedetails-detail-label">10th Marks</div>
                         <div className="employeedetails-field-wrapper">
                           <input
@@ -4026,19 +5349,15 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                         </div>
                       </div>
 
-                      <div id="field-wrapper-passedOutYear10" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("passedOutYear10")) ? "block" : "none" }}>
+                      <div id="field-wrapper-passedOutYear10" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("passedOutYear10") ? "block" : "none" }}>
                         <div className="employeedetails-detail-label">10th Passed-Out Year</div>
                         <div className="employeedetails-field-wrapper">
-                          <input
-                            className={`employeedetails-detail-input ${!canEditField("passedOutYear10") ? "employeedetails-input-locked" : ""} ${yearErrors.passedOutYear10 ? "employeedetails-input-error" : ""}`}
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={4}
+                          <SearchableYearDropdown
+                            options={singleYearOptions}
                             value={formData.passedOutYear10 || ""}
-                            onChange={(e) => handleYearChange("passedOutYear10", e.target.value)}
-                            onKeyDown={handleNumberKeyDown}
+                            onChange={(val) => handleYearChange("passedOutYear10", val)}
                             disabled={!canEditField("passedOutYear10")}
-                            readOnly={!canEditField("passedOutYear10")}
+                            error={yearErrors.passedOutYear10}
                             placeholder="e.g. 2021"
                           />
                           {yearErrors.passedOutYear10 && (
@@ -4047,7 +5366,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                         </div>
                       </div>
 
-                      <div id="field-wrapper-marksheet10" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("marksheet10")) ? "block" : "none" }}>
+                      <div id="field-wrapper-marksheet10" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("marksheet10") ? "block" : "none" }}>
                         <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span>10th Marksheet</span>
                         </div>
@@ -4073,7 +5392,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                   </div>
                 )}
 
-                {(!isRejectedMode || canEditField("educationPath")) && (
+                {(!isRestrictedEditMode || isFieldVisible("educationPath") || isFieldVisible("school12") || isFieldVisible("courses")) && (
                   <>
                     <div className="employeedetails-education-divider" />
 
@@ -4093,7 +5412,23 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                         type="button"
                         onClick={() => {
                           setEducationPath("Diploma");
-                          setNewCourse((prev) => ({ ...prev, courseType: "Diploma" }));
+                          if (!formData.courses.some((c) => String(c?.courseType || "").toUpperCase() === "DIPLOMA")) {
+                            setFormData((prev) => ({
+                              ...prev,
+                              courses: [
+                                ...(prev.courses || []),
+                                {
+                                  id: Date.now(),
+                                  courseType: "Diploma",
+                                  collegeName: "",
+                                  courseName: "",
+                                  cgpa: "",
+                                  passedOutYear: "",
+                                  certificate: null,
+                                },
+                              ],
+                            }));
+                          }
                         }}
                         className={`employeedetails-path-btn ${educationPath === "Diploma" ? "active" : ""}`}
                       >
@@ -4103,12 +5438,12 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                   </>
                 )}
 
-                {educationPath === "12th" && (!isRejectedMode || canEditField("school12") || canEditField("marks12") || canEditField("passedOutYear12") || canEditField("marksheet12")) && (
+                {educationPath === "12th" && (!isRestrictedEditMode || isFieldVisible("school12") || isFieldVisible("marks12") || isFieldVisible("passedOutYear12") || isFieldVisible("marksheet12")) && (
                   <>
                     <div className="employeedetails-education-group">
                       <div className="employeedetails-education-group-label">12th Standard</div>
                       <div className="employeedetails-row employeedetails-education-row">
-                        <div id="field-wrapper-school12" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("school12")) ? "block" : "none" }}>
+                        <div id="field-wrapper-school12" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("school12") ? "block" : "none" }}>
                           <div className="employeedetails-detail-label">12th School</div>
                           <input
                             className={`employeedetails-detail-input ${!canEditField("school12") ? "employeedetails-input-locked" : ""}`}
@@ -4120,7 +5455,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                           />
                         </div>
 
-                        <div id="field-wrapper-marks12" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("marks12")) ? "block" : "none" }}>
+                        <div id="field-wrapper-marks12" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("marks12") ? "block" : "none" }}>
                           <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-1">
                             <div className="employeedetails-detail-label employeedetails-mb-0">12th Marks</div>
                             <div className="employeedetails-marks-total-selector">
@@ -4166,19 +5501,15 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                           </div>
                         </div>
 
-                        <div id="field-wrapper-passedOutYear12" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("passedOutYear12")) ? "block" : "none" }}>
+                        <div id="field-wrapper-passedOutYear12" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("passedOutYear12") ? "block" : "none" }}>
                           <div className="employeedetails-detail-label">12th Passed-Out Year</div>
                           <div className="employeedetails-field-wrapper">
-                            <input
-                              className={`employeedetails-detail-input ${!canEditField("passedOutYear12") ? "employeedetails-input-locked" : ""} ${yearErrors.passedOutYear12 ? "employeedetails-input-error" : ""}`}
-                              type="text"
-                              inputMode="numeric"
-                              maxLength={4}
+                            <SearchableYearDropdown
+                              options={singleYearOptions}
                               value={formData.passedOutYear12 || ""}
-                              onChange={(e) => handleYearChange("passedOutYear12", e.target.value)}
-                              onKeyDown={handleNumberKeyDown}
+                              onChange={(val) => handleYearChange("passedOutYear12", val)}
                               disabled={!canEditField("passedOutYear12")}
-                              readOnly={!canEditField("passedOutYear12")}
+                              error={yearErrors.passedOutYear12}
                               placeholder="e.g. 2023"
                             />
                             {yearErrors.passedOutYear12 && (
@@ -4187,7 +5518,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                           </div>
                         </div>
 
-                        <div id="field-wrapper-marksheet12" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("marksheet12")) ? "block" : "none" }}>
+                        <div id="field-wrapper-marksheet12" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("marksheet12") ? "block" : "none" }}>
                           <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span>12th Marksheet</span>
                           </div>
@@ -4316,19 +5647,218 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                   </>
                 )}
 
-                {educationPath === "Diploma" && (
+                {educationPath === "Diploma" && (!isRestrictedEditMode || isFieldVisible("courses") || isFieldVisible("degreeCertificate")) && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAddCourse(true);
-                        setNewCourse((prev) => ({ ...prev, courseType: "Diploma" }));
-                      }}
-                      className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-primary employeedetails-mb-4"
-                    >
-                      Add Diploma Course
-                    </button>
                     {(() => {
+                      const diplomaEntries = (formData.courses || [])
+                        .map((course, originalIndex) => ({ course, originalIndex }))
+                        .filter(({ course }) => String(course?.courseType || "").toUpperCase() === "DIPLOMA");
+
+                      if (diplomaEntries.length === 0) {
+                        return (
+                          <div className="p-4 bg-light rounded border text-center employeedetails-mb-4">
+                            <p className="text-muted mb-2">No diploma course details entered yet.</p>
+                            {canEditField("courses") && (
+                              <button
+                                type="button"
+                                className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-primary"
+                                onClick={() => {
+                                  markFieldAsUpdated("courses");
+                                  markFieldAsUpdated("degreeCertificate");
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    courses: [
+                                      ...(prev.courses || []),
+                                      {
+                                        id: Date.now(),
+                                        courseType: "Diploma",
+                                        collegeName: "",
+                                        courseName: "",
+                                        cgpa: "",
+                                        passedOutYear: "",
+                                        certificate: null,
+                                      },
+                                    ],
+                                  }));
+                                }}
+                              >
+                                + Add Diploma Course
+                              </button>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="employeedetails-education-group">
+                          <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3 flex-wrap gap-2">
+                            <div className="employeedetails-education-group-label" style={{ margin: 0 }}>
+                              Diploma / Polytechnic Details
+                            </div>
+                            {canEditField("courses") && (
+                              <button
+                                type="button"
+                                className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-primary"
+                                onClick={() => {
+                                  markFieldAsUpdated("courses");
+                                  markFieldAsUpdated("degreeCertificate");
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    courses: [
+                                      ...(prev.courses || []),
+                                      {
+                                        id: Date.now(),
+                                        courseType: "Diploma",
+                                        collegeName: "",
+                                        courseName: "",
+                                        cgpa: "",
+                                        passedOutYear: "",
+                                        certificate: null,
+                                      },
+                                    ],
+                                  }));
+                                }}
+                              >
+                                + Add Another Diploma
+                              </button>
+                            )}
+                          </div>
+
+                          {diplomaEntries.map(({ course, originalIndex: index }, dipIdx) => (
+                            <div
+                              key={course.id || `diploma-${index}`}
+                              className="employeedetails-mb-4 p-3 border rounded bg-white"
+                              style={{
+                                overflow: "visible",
+                                position: "relative",
+                                zIndex: (diplomaEntries?.length || 1) - dipIdx + 10,
+                              }}
+                            >
+                              <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3">
+                                <h6 className="employeedetails-mb-0" style={{ fontSize: "14px", fontWeight: "600", color: "#1e293b" }}>
+                                  Diploma {dipIdx + 1} {course.courseName ? `- ${course.courseName}` : ""}
+                                </h6>
+                                {canEditField("courses") && (
+                                  <button
+                                    type="button"
+                                    className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-danger"
+                                    onClick={() => handleRemoveCourse(index)}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="employeedetails-row">
+                                <div className="employeedetails-col-md-6 employeedetails-mb-3">
+                                  <div className="employeedetails-detail-label">Polytechnic / College Name</div>
+                                  <input
+                                    className={`employeedetails-detail-input ${!canEditField("courses") ? "employeedetails-input-locked" : ""}`}
+                                    type="text"
+                                    placeholder="e.g. Government Polytechnic College"
+                                    value={course.collegeName || ""}
+                                    onChange={(e) => handleCourseChange(index, "collegeName", e.target.value)}
+                                    disabled={!canEditField("courses")}
+                                    readOnly={!canEditField("courses")}
+                                  />
+                                </div>
+
+                                <div className="employeedetails-col-md-6 employeedetails-mb-3">
+                                  <div className="employeedetails-detail-label">Diploma Course / Branch</div>
+                                  <input
+                                    className={`employeedetails-detail-input ${!canEditField("courses") ? "employeedetails-input-locked" : ""}`}
+                                    type="text"
+                                    placeholder="e.g. Mechanical / Civil / EEE / Computer"
+                                    value={course.courseName || ""}
+                                    onChange={(e) => handleCourseChange(index, "courseName", e.target.value)}
+                                    disabled={!canEditField("courses")}
+                                    readOnly={!canEditField("courses")}
+                                  />
+                                </div>
+
+                                <div className="employeedetails-col-md-6 employeedetails-mb-3">
+                                  <div className="employeedetails-detail-label">CGPA / Percentage</div>
+                                  <input
+                                    type="text"
+                                    placeholder="Enter CGPA (0–10) or % (0–100)"
+                                    className={`employeedetails-detail-input ${!canEditField("courses") ? "employeedetails-input-locked" : ""}`}
+                                    value={course.cgpa || ""}
+                                    onChange={(e) => {
+                                      let cleaned = e.target.value.replace(/[^0-9.]/g, "");
+                                      const parts = cleaned.split(".");
+                                      if (parts.length > 2) {
+                                        cleaned = parts[0] + "." + parts.slice(1).join("");
+                                      }
+                                      handleCourseChange(index, "cgpa", cleaned);
+                                    }}
+                                    onBlur={(e) => {
+                                      const error = validateCgpa(e.target.value);
+                                      if (error) showErrorModal("Invalid CGPA", error);
+                                    }}
+                                    disabled={!canEditField("courses")}
+                                    readOnly={!canEditField("courses")}
+                                  />
+                                </div>
+
+                                <div className="employeedetails-col-md-6 employeedetails-mb-3">
+                                  <div className="employeedetails-detail-label">Course Duration</div>
+                                  <CustomDropdown
+                                    style={{ width: "100%" }}
+                                    placeholder="Select Duration"
+                                    value={getCourseDuration(course)}
+                                    onChange={(val) => handleCourseDurationChange(index, val)}
+                                    options={[
+                                      { label: "1", value: 1 },
+                                      { label: "2", value: 2 },
+                                      { label: "3", value: 3 },
+                                      { label: "4", value: 4 },
+                                      { label: "5", value: 5 },
+                                    ]}
+                                    disabled={!canEditField("courses")}
+                                  />
+                                </div>
+
+                                <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ position: "relative", zIndex: 100 }}>
+                                  <div className="employeedetails-detail-label">Year Passed Out (YYYY-YYYY)</div>
+                                  <SearchableYearDropdown
+                                    options={getCourseYearOptions(getCourseDuration(course))}
+                                    value={course.passedOutYear || ""}
+                                    onChange={(selectedRange) => {
+                                      handleCourseChange(index, "passedOutYear", selectedRange);
+                                      triggerCourseCareerGapCheck(selectedRange, "Diploma", index);
+                                    }}
+                                    placeholder="e.g. 2018-2021"
+                                    disabled={!canEditField("courses")}
+                                  />
+                                </div>
+
+                                <div className="employeedetails-col-md-6 employeedetails-mb-3">
+                                  <div className="employeedetails-file-upload-container">
+                                    <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span>Diploma Certificate / Marksheet</span>
+                                    </div>
+                                    <input
+                                      type="file"
+                                      className="employeedetails-detail-input employeedetails-file-input-aligned"
+                                      onChange={(e) => handleCourseFileChange(index, e.target.files[0], e.target)}
+                                      accept="image/*,.pdf"
+                                      disabled={!canEditField("courses")}
+                                    />
+                                    {(filePreviews[`course_${course.id}_certificate`] || filePreviews[`course_${course._id}_certificate`] || course.certificateUrl || (typeof course.certificate === "string" && course.certificate)) && !(course.certificate instanceof File) && (
+                                      <div className="employeedetails-file-name">
+                                        Existing File: {(filePreviews[`course_${course.id}_certificate`] || filePreviews[`course_${course._id}_certificate`] || course.certificateUrl || course.certificate).split("/").pop().split("?")[0]}
+                                      </div>
+                                    )}
+                                    {renderCourseFilePreview(index)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                    {isFieldVisible("careerGaps") && (() => {
                       const eligibleGaps = calculateEligibleCareerGaps({
                         passedOutYear10: formData.passedOutYear10,
                         passedOutYear12: formData.passedOutYear12,
@@ -4405,332 +5935,254 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                   </>
                 )}
 
-                <Divider />
-              </>
+              </div>
             )}
 
-            {/* ===== COURSES SECTION ===== */}
-            {visibleSections.includes("courses") && (
-              <>
+            {/* ================= STEP 5: DEGREE / COLLEGE COURSES ================= */}
+            {(isRestrictedEditMode ? isStepVisible(5) : activeStep === 5) && (
+              <div className="onboarding-step-content step-5-courses">
+                <div className="onboarding-step-header mb-4">
+                  <h6 className="employeedetails-section-title mb-1">{isRestrictedEditMode ? "Degree / College Courses" : "Step 5: Degree / College Courses"}</h6>
+                  {/* <p className="text-muted small mb-0">Undergraduate, postgraduate, diploma courses, and professional certifications.</p> */}
+                </div>
+                {isFieldVisible("courses") && (
                 <div id="field-wrapper-courses" className="employeedetails-courses-section">
-                  <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3">
-                    <h6 className="employeedetails-section-title employeedetails-mb-0"> College Courses</h6>
-                    {!isRejectedMode && canEditField("courses") && (
-                      <button
-                        className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-primary"
-                        onClick={() => setShowAddCourse(!showAddCourse)}
-                      >
-                        {showAddCourse ? "Cancel" : "+ Add Course"}
-                      </button>
+                  <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3 flex-wrap gap-2">
+                    <div>
+                      <h6 className="employeedetails-section-title employeedetails-mb-0">Degree / College Courses</h6>
+                      <p className="text-muted small mb-0">Add your Undergraduate (UG) and Postgraduate (PG) degree courses.</p>
+                    </div>
+                    {canEditField("courses") && (
+                      <div className="d-flex gap-2">
+                        <button
+                          type="button"
+                          className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-primary"
+                          onClick={() => handleAddCourseDirect("UG")}
+                        >
+                          + Add UG Course
+                        </button>
+                        <button
+                          type="button"
+                          className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-primary"
+                          onClick={() => handleAddCourseDirect("PG")}
+                        >
+                          + Add PG Course
+                        </button>
+                      </div>
                     )}
                   </div>
 
-                  {showAddCourse && canEditField("courses") && (
-                    <div className="employeedetails-add-course-form employeedetails-mb-4 employeedetails-p-3 employeedetails-border employeedetails-rounded">
-                      <div className="employeedetails-course-grid">
-                        <div>
-                          <label className="employeedetails-detail-label">Course Type</label>
-                          <CustomDropdown
-                            style={{ width: "100%" }}
-                            placeholder="Select"
-                            value={newCourse.courseType}
-                            onChange={(val) =>
-                              setNewCourse((prev) => ({ ...prev, courseType: val }))
-                            }
-                            options={[
-                              { label: "Diploma", value: "Diploma" },
-                              { label: "UG", value: "UG" },
-                              { label: "PG", value: "PG" }
-                            ]}
-                          />
+                  {(() => {
+                    const collegeCourses = (formData.courses || [])
+                      .map((course, originalIndex) => ({ course, originalIndex }))
+                      .filter(({ course }) => {
+                        const ct = String(course?.courseType || "").toUpperCase();
+                        if (educationPath === "Diploma") {
+                          return ct !== "DIPLOMA";
+                        }
+                        return true;
+                      });
+
+                    if (collegeCourses.length === 0) {
+                      return (
+                        <div className="text-muted small p-3 bg-light rounded text-center border">
+                          No college courses added yet. Click <strong>"+ Add UG Course"</strong> or <strong>"+ Add PG Course"</strong> above to add degree details.
                         </div>
+                      );
+                    }
 
-                        <DetailInput
-                          label="College Name"
-                          value={newCourse.collegeName}
-                          onChange={(v) =>
-                            setNewCourse((prev) => ({ ...prev, collegeName: v }))
-                          }
-                        />
-
-                        <DetailInput
-                          label="Course Name"
-                          value={newCourse.courseName}
-                          onChange={(v) =>
-                            setNewCourse((prev) => ({ ...prev, courseName: v }))
-                          }
-                        />
-
-                        <div>
-                          <div className="employeedetails-field-wrapper">
-                            <label className="employeedetails-detail-label">CGPA / Percentage</label>
-                            <input
-                              type="text"
-                              placeholder="Enter CGPA (0–10) or % (0–100)"
-                              value={newCourse.cgpa}
-                              onChange={(v) => {
-                                let cleaned = v.target.value.replace(/[^0-9.]/g, "");
-                                const parts = cleaned.split(".");
-                                if (parts.length > 2) {
-                                  cleaned = parts[0] + "." + parts.slice(1).join("");
-                                }
-                                setNewCourse((prev) => ({ ...prev, cgpa: cleaned }));
-                                const error = validateCgpa(cleaned);
-                                setCourseErrors((prev) => ({ ...prev, cgpa: error }));
-                              }}
-                              className={`employeedetails-detail-input ${courseErrors.cgpa ? "employeedetails-input-error" : ""
-                                }`}
-                            />
-                            {courseErrors.cgpa && (
-                              <div className="employeedetails-field-error">
-                                {courseErrors.cgpa}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="employeedetails-detail-label">Year Passed Out</label>
-                          <div className="employeedetails-field-wrapper">
-                            <input
-                              type="text"
-                              placeholder="YYYY-YYYY (e.g. 2021-2024)"
-                              value={newCourse.passedOutYear}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setNewCourse((prev) => ({ ...prev, passedOutYear: val }));
-                                if (val.length >= 9) {
-                                  setCourseErrors((prev) => ({
-                                    ...prev,
-                                    passedOutYear: validateYearRange(val, newCourse.courseType || "UG"),
-                                  }));
-                                  triggerCourseCareerGapCheck(val, newCourse.courseType || "UG");
-                                } else if (!val) {
-                                  setCourseErrors((prev) => ({
-                                    ...prev,
-                                    passedOutYear: "",
-                                  }));
-                                }
-                              }}
-                              onBlur={(e) => {
-                                const val = e.target.value;
-                                if (val) {
-                                  const err = validateYearRange(val, newCourse.courseType || "UG");
-                                  setCourseErrors((prev) => ({
-                                    ...prev,
-                                    passedOutYear: err,
-                                  }));
-                                  if (!err && val.length === 9) {
-                                    triggerCourseCareerGapCheck(val, newCourse.courseType || "UG");
-                                  }
-                                }
-                              }}
-                              className={`employeedetails-detail-input ${courseErrors.passedOutYear ? "employeedetails-input-error" : ""
-                                }`}
-                            />
-                            {courseErrors.passedOutYear && (
-                              <div className="employeedetails-field-error">
-                                {courseErrors.passedOutYear}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="employeedetails-full">
-                          <label className="employeedetails-detail-label">Degree Certificate</label>
-                          <input
-                            type="file"
-                            className="employeedetails-detail-input employeedetails-file-input-aligned"
-                            onChange={(e) => {
-                              const file = e.target.files[0];
-                              if (!file) {
-                                setNewCourse((prev) => ({ ...prev, certificate: null }));
-                                return;
-                              }
-                              const allowedTypes = [
-                                "image/jpeg",
-                                "image/png",
-                                "image/jpg",
-                                "image/webp",
-                                "application/pdf",
-                              ];
-                              const maxSize = 2 * 1024 * 1024;
-                              if (!allowedTypes.includes(file.type)) {
-                                e.target.value = "";
-                                showErrorModal("Invalid File", "Only JPG, PNG, WEBP, PDF allowed");
-                                return;
-                              }
-                              if (file.size > maxSize) {
-                                e.target.value = "";
-                                showErrorModal("File Too Large", "Max size is 2MB");
-                                return;
-                              }
-                              setNewCourse((prev) => ({
-                                ...prev,
-                                certificate: file,
-                              }));
+                    return (
+                      <div className="employeedetails-courses-list">
+                        {collegeCourses.map(({ course, originalIndex: index }, listIdx) => (
+                          <div
+                            key={course.id || `course-${index}`}
+                            className="employeedetails-course-item employeedetails-mb-4 employeedetails-p-4 employeedetails-border employeedetails-rounded"
+                            style={{
+                              background: "#ffffff",
+                              overflow: "visible",
+                              position: "relative",
+                              zIndex: collegeCourses.length - listIdx + 10,
                             }}
-                            accept="image/*,.pdf"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="employeedetails-d-flex employeedetails-justify-content-end employeedetails-mt-3">
-                        <button
-                          className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-primary"
-                          onClick={handleAddCourse}
-                        >
-                          Click to save
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {formData.courses.length > 0 && (
-                    <div className="employeedetails-courses-list">
-                      {formData.courses.map((course, index) => (
-                        <div
-                          key={course.id || `course-${index}`}
-                          className="employeedetails-course-item employeedetails-mb-4 employeedetails-p-4 employeedetails-border employeedetails-rounded"
-                        >
-                          <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3">
-                            <h6
-                              className="employeedetails-mb-0"
-                              style={{ fontSize: "14px", color: "#1f2937" }}
-                            >
-                              {course.courseType}: {course.courseName}{" "}
-                              {course.passedOutYear && `(${course.passedOutYear})`}
-                            </h6>
-                            {canEditField("courses") && (
-                              <button
-                                className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-danger"
-                                onClick={() => handleRemoveCourse(index)}
+                          >
+                            <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3">
+                              <h6
+                                className="employeedetails-mb-0"
+                                style={{ fontSize: "14px", fontWeight: "700", color: "#1f2937" }}
                               >
-                                Remove
-                              </button>
-                            )}
-                          </div>
+                                {listIdx + 1}: {course.courseType || "UG"} - {course.courseName || "Course Name"}{" "}
+                                {course.passedOutYear && `(${course.passedOutYear})`}
+                              </h6>
+                              {canEditField("courses") && (
+                                <button
+                                  type="button"
+                                  className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-danger"
+                                  onClick={() => handleRemoveCourse(index)}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
 
-                          <div className="employeedetails-row employeedetails-course-fields-row">
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ display: !isRejectedMode ? "block" : "none" }}>
-                              <DetailInput
-                                label="College Name"
-                                value={course.collegeName}
-                                onChange={(v) => handleCourseChange(index, "collegeName", v)}
-                                disabled={!canEditField("courses")} visible={!isRejectedMode}
-                              />
-                            </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ display: !isRejectedMode ? "block" : "none" }}>
-                              <DetailInput
-                                label="Course Name"
-                                value={course.courseName}
-                                onChange={(v) => handleCourseChange(index, "courseName", v)}
-                                disabled={!canEditField("courses")} visible={!isRejectedMode}
-                              />
-                            </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ display: !isRejectedMode ? "block" : "none" }}>
-                              <div style={{ padding: 0 }}>
-                                <div className="employeedetails-detail-label">CGPA / Percentage</div>
-                                <input
-                                  type="text"
-                                  placeholder="Enter CGPA (0–10) or % (0–100)"
-                                  className={`employeedetails-detail-input ${!canEditField() ? "employeedetails-input-locked" : ""}`}
-                                  value={course.cgpa || ""}
-                                  onChange={(e) => {
-                                    let cleaned = e.target.value.replace(/[^0-9.]/g, "");
-                                    const parts = cleaned.split(".");
-                                    if (parts.length > 2) {
-                                      cleaned = parts[0] + "." + parts.slice(1).join("");
-                                    }
-                                    handleCourseChange(index, "cgpa", cleaned);
-                                  }}
-                                  onBlur={(e) => {
-                                    const error = validateCgpa(e.target.value);
-                                    if (error) showErrorModal("Invalid CGPA", error);
-                                  }}
-                                  disabled={!canEditField()}
-                                  readOnly={!canEditField()}
+                            <div className="employeedetails-row employeedetails-course-fields-row">
+                              <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ display: !isRejectedMode ? "block" : "none" }}>
+                                <div className="employeedetails-detail-label">Course Type</div>
+                                <CustomDropdown
+                                  style={{ width: "100%" }}
+                                  placeholder="Select Course Type"
+                                  value={course.courseType || "UG"}
+                                  onChange={(val) => handleCourseChange(index, "courseType", val)}
+                                  options={[
+                                    { label: "UG (Undergraduate)", value: "UG" },
+                                    { label: "PG (Postgraduate)", value: "PG" },
+                                    { label: "Engineering", value: "Engineering" },
+                                    { label: "Other Degree", value: "Other" },
+                                  ]}
+                                  disabled={!canEditField("courses")}
                                 />
                               </div>
-                            </div>
-                            <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ display: !isRejectedMode ? "block" : "none" }}>
-                              <div style={{ padding: 0 }}>
-                                <div className="employeedetails-detail-label">Year (e.g. 2021-2024)</div>
+
+                              <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ display: !isRejectedMode ? "block" : "none" }}>
+                                <div className="employeedetails-detail-label">College Name</div>
                                 <input
                                   type="text"
-                                  placeholder="2021-2024"
-                                  className={`employeedetails-detail-input ${!canEditField() ? "employeedetails-input-locked" : ""}`}
-                                  value={course.passedOutYear || ""}
-                                  onChange={(e) => {
-                                    let cleaned = e.target.value.replace(/[^0-9]/g, "");
-                                    if (cleaned.length > 4) {
-                                      cleaned = cleaned.slice(0, 4) + "-" + cleaned.slice(4, 8);
-                                    }
-                                    handleCourseChange(index, "passedOutYear", cleaned);
-                                    if (cleaned.length === 9) {
-                                      triggerCourseCareerGapCheck(cleaned, course.courseType || "UG", index);
-                                    }
-                                  }}
-                                  onBlur={(e) => {
-                                    const val = e.target.value;
-                                    // Only validate once the user has typed a complete YYYY-YYYY value
-                                    if (!val || val.length < 9) return;
-                                    const yearErr = validateYearRange(val, course.courseType || "UG");
-                                    if (yearErr) { showErrorModal("Invalid Year", yearErr); return; }
-                                    triggerCourseCareerGapCheck(val, course.courseType || "UG", index);
-                                  }}
-                                  disabled={!canEditField()}
-                                  readOnly={!canEditField()}
+                                  placeholder="Enter College / University Name"
+                                  className={`employeedetails-detail-input ${!canEditField("courses") ? "employeedetails-input-locked" : ""}`}
+                                  value={course.collegeName || ""}
+                                  onChange={(e) => handleCourseChange(index, "collegeName", e.target.value)}
+                                  disabled={!canEditField("courses")}
+                                  readOnly={!canEditField("courses")}
                                 />
                               </div>
-                            </div>
-                            <div
-                              id={`field-wrapper-courses.${index}.certificate`}
-                              data-field-wrapper={index === 0 ? "field-wrapper-degreeCertificate" : `field-wrapper-course-certificate-${index}`}
-                              className="employeedetails-col-md-6 employeedetails-mb-3"
-                            >
-                              <div className="employeedetails-file-upload-container">
-                                <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span>Degree Certificate</span>
+
+                              <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ display: !isRejectedMode ? "block" : "none" }}>
+                                <div className="employeedetails-detail-label">Course Name</div>
+                                <input
+                                  type="text"
+                                  placeholder="Enter Degree / Course Name (e.g. B.Tech CS, B.Com)"
+                                  className={`employeedetails-detail-input ${!canEditField("courses") ? "employeedetails-input-locked" : ""}`}
+                                  value={course.courseName || ""}
+                                  onChange={(e) => handleCourseChange(index, "courseName", e.target.value)}
+                                  disabled={!canEditField("courses")}
+                                  readOnly={!canEditField("courses")}
+                                />
+                              </div>
+
+                              <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ display: !isRejectedMode ? "block" : "none" }}>
+                                <div style={{ padding: 0 }}>
+                                  <div className="employeedetails-detail-label">CGPA / Percentage</div>
+                                  <input
+                                    type="text"
+                                    placeholder="Enter CGPA (0–10) or % (0–100)"
+                                    className={`employeedetails-detail-input ${!canEditField("courses") ? "employeedetails-input-locked" : ""}`}
+                                    value={course.cgpa || ""}
+                                    onChange={(e) => {
+                                      let cleaned = e.target.value.replace(/[^0-9.]/g, "");
+                                      const parts = cleaned.split(".");
+                                      if (parts.length > 2) {
+                                        cleaned = parts[0] + "." + parts.slice(1).join("");
+                                      }
+                                      handleCourseChange(index, "cgpa", cleaned);
+                                    }}
+                                    onBlur={(e) => {
+                                      const error = validateCgpa(e.target.value);
+                                      if (error) showErrorModal("Invalid CGPA", error);
+                                    }}
+                                    disabled={!canEditField("courses")}
+                                    readOnly={!canEditField("courses")}
+                                  />
                                 </div>
-                                <input
-                                  type="file"
-                                  className="employeedetails-detail-input employeedetails-file-input-aligned"
-                                  onChange={(e) =>
-                                    handleCourseFileChange(index, e.target.files[0], e.target)
-                                  }
-                                  accept="image/*,.pdf"
-                                  disabled={!canEditField("courses") && !isFieldRejected(`courses.${index}.certificate`)}
+                              </div>
+
+                              <div className="employeedetails-col-md-6 employeedetails-mb-3" style={{ display: !isRejectedMode ? "block" : "none" }}>
+                                <div className="employeedetails-detail-label">Course Duration</div>
+                                <CustomDropdown
+                                  style={{ width: "100%" }}
+                                  placeholder="Select Duration"
+                                  value={getCourseDuration(course)}
+                                  onChange={(val) => handleCourseDurationChange(index, val)}
+                                  options={[
+                                    { label: "1", value: 1 },
+                                    { label: "2", value: 2 },
+                                    { label: "3", value: 3 },
+                                    { label: "4", value: 4 },
+                                    { label: "5", value: 5 },
+                                  ]}
+                                  disabled={!canEditField("courses")}
                                 />
-                                {(filePreviews[`course_${course.id}_certificate`] || filePreviews[`course_${course._id}_certificate`] || course.certificateUrl || (typeof course.certificate === "string" && course.certificate)) && !(course.certificate instanceof File) && (
-                                  <div className="employeedetails-file-name">
-                                    Existing File: {(filePreviews[`course_${course.id}_certificate`] || filePreviews[`course_${course._id}_certificate`] || course.certificateUrl || course.certificate).split("/").pop().split("?")[0]}
+                              </div>
+
+                              <div
+                                className="employeedetails-col-md-6 employeedetails-mb-3"
+                                style={{
+                                  display: !isRejectedMode ? "block" : "none",
+                                  position: "relative",
+                                  zIndex: 100,
+                                }}
+                              >
+                                <div style={{ padding: 0 }}>
+                                  <div className="employeedetails-detail-label">Year Passed Out (YYYY-YYYY)</div>
+                                  <SearchableYearDropdown
+                                    options={getCourseYearOptions(getCourseDuration(course))}
+                                    value={course.passedOutYear || ""}
+                                    onChange={(selectedRange) => {
+                                      handleCourseChange(index, "passedOutYear", selectedRange);
+                                      triggerCourseCareerGapCheck(selectedRange, course.courseType || "UG", index);
+                                    }}
+                                    placeholder="e.g. 2021-2024"
+                                    disabled={!canEditField("courses")}
+                                  />
+                                </div>
+                              </div>
+
+                              <div
+                                id={`field-wrapper-courses.${index}.certificate`}
+                                data-field-wrapper={index === 0 ? "field-wrapper-degreeCertificate" : `field-wrapper-course-certificate-${index}`}
+                                className="employeedetails-col-md-6 employeedetails-mb-3"
+                              >
+                                <div className="employeedetails-file-upload-container">
+                                  <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>Degree Certificate</span>
                                   </div>
-                                )}
-                                {renderCourseFilePreview(index)}
+                                  <input
+                                    type="file"
+                                    className="employeedetails-detail-input employeedetails-file-input-aligned"
+                                    onChange={(e) =>
+                                      handleCourseFileChange(index, e.target.files[0], e.target)
+                                    }
+                                    accept="image/*,.pdf"
+                                    disabled={!canEditField("courses") && !isFieldRejected(`courses.${index}.certificate`)}
+                                  />
+                                  {(filePreviews[`course_${course.id}_certificate`] || filePreviews[`course_${course._id}_certificate`] || course.certificateUrl || (typeof course.certificate === "string" && course.certificate)) && !(course.certificate instanceof File) && (
+                                    <div className="employeedetails-file-name">
+                                      Existing File: {(filePreviews[`course_${course.id}_certificate`] || filePreviews[`course_${course._id}_certificate`] || course.certificateUrl || course.certificate).split("/").pop().split("?")[0]}
+                                    </div>
+                                  )}
+                                  {renderCourseFilePreview(index)}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
-                <Divider />
+                )}
+                {(isFieldVisible("courses") && isFieldVisible("professionalCertifications")) && <Divider />}
 
                 {/* ===== PROFESSIONAL CERTIFICATIONS / EXTRA COURSES ===== */}
-                {(!isRejectedMode ? canEditField("courses") : (isFieldRejected("professionalCertifications") || isFieldRejected("courses") || rejectedFields?.some(rf => String(rf).includes("professionalCertifications")))) && (
+                {isFieldVisible("professionalCertifications") && (
                   <div className="employeedetails-certifications-section" style={{ marginTop: "24px", marginBottom: "24px" }}>
                     <div className="employeedetails-cert-section-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "10px" }}>
                       <div>
                         <h6 className="employeedetails-section-title" style={{ marginBottom: "6px" }}>
-                          Professional Certifications / Additional Courses
+                          Additional Courses
                         </h6>
                         <p style={{ fontSize: "13px", color: "#6b7280", margin: 0 }}>
                           Have you completed any additional certifications or short courses (e.g., MERN Stack, AWS, etc.)?
                         </p>
                       </div>
-                      {!isRejectedMode && hasCertifications === "yes" && (
+                      {canEditField("professionalCertifications") && hasCertifications === "yes" && (
                         <button
                           type="button"
                           className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-primary"
@@ -4742,7 +6194,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                       )}
                     </div>
 
-                    {!isRejectedMode && (
+                    {canEditField("professionalCertifications") && (
                       <div className="employeedetails-cert-radios" style={{ display: "flex", gap: "20px", marginBottom: "18px", alignItems: "center", flexWrap: "wrap" }}>
                         <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "14px", fontWeight: "500", color: hasCertifications === "yes" ? "#4f46e5" : "#374151" }}>
                           <input
@@ -4794,9 +6246,9 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                               >
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f3f4f6", paddingBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
                                   <span style={{ fontWeight: 600, fontSize: "14px", color: "#1f2937", wordBreak: "break-word" }}>
-                                    {cert.courseName?.trim() ? cert.courseName : `Certification #${index + 1}`}
+                                    {cert.courseName?.trim() ? cert.courseName : `Certification ${index + 1}`}
                                   </span>
-                                  {!isRejectedMode && (
+                                  {canEditField("professionalCertifications") && (
                                     <button
                                       type="button"
                                       className="employeedetails-btn employeedetails-btn-sm employeedetails-btn-outline-danger"
@@ -4985,7 +6437,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                                       accept="image/*,.pdf"
                                       className="employeedetails-detail-input employeedetails-file-input-aligned"
                                       onChange={(e) => handleCertFileChange(index, e.target.files[0], e.target)}
-                                      disabled={!canEditField("courses") && !isFieldRejected("professionalCertifications") && !isFieldRejected(`professionalCertifications.${index}.certificate`)}
+                                      disabled={!canEditField("professionalCertifications")}
                                     />
                                     {cert.certificateFile && (
                                       <div className="employeedetails-file-name" style={{ color: "#16a34a", fontSize: "12px", marginTop: "4px" }}>
@@ -5008,379 +6460,598 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                     )}
                   </div>
                 )}
-                <Divider />
-              </>
+              </div>
             )}
 
-            {/* ===== KYC DETAILS ===== */}
-            {(visibleSections.includes("kyc") || visibleSections.includes("kycBank")) && (
-              <>
-                <h6 className="employeedetails-section-title">KYC Details</h6>
-                <div className="employeedetails-row">
-                  <div id="field-wrapper-aadhaarNo" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("aadhaarNo")) ? "block" : "none" }}>
-                    <div className="employeedetails-detail-label">Aadhaar No (12 digit)</div>
-                    <div className="employeedetails-field-wrapper">
-                      <div style={{ position: "relative" }}>
-                        <input
-                          className={`employeedetails-detail-input ${kycErrors.aadhaarNo ? "employeedetails-input-error" : ""
-                            }`}
-                          type="text"
-                          value={showAadhaar ? (formData.aadhaarNo || "") : maskAadhaarLocal(formData.aadhaarNo || "")}
-                          onChange={(e) => handleKycChange("aadhaarNo", e.target.value)}
-                          maxLength={12}
-                          placeholder="Enter 12-digit Aadhaar number"
-                          disabled={!canEditField("aadhaarNo")}
-                        />
-                        <button
-                          type="button"
-                          className="employeedetails-visibility-toggle"
-                          onClick={toggleAadhaarVisibility}
-                          style={{
-                            position: "absolute",
-                            right: "12px",
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: "#6b7280",
-                            display: "flex",
-                            alignItems: "center"
-                          }}
-                          disabled={isFetchingAadhaar}
-                        >
-                          {isFetchingAadhaar ? (
-                            <div className="spinner-border spinner-border-sm" role="status"></div>
-                          ) : (
-                            <Icon icon={showAadhaar ? "lucide:eye-off" : "lucide:eye"} width={20} />
-                          )}
-                        </button>
-                      </div>
-                      {kycErrors.aadhaarNo && (
-                        <div className="employeedetails-field-error">
-                          {kycErrors.aadhaarNo}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div id="field-wrapper-panNo" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("panNo")) ? "block" : "none" }}>
-                    <div className="employeedetails-detail-label">PAN Number</div>
-                    <div className="employeedetails-field-wrapper">
-                      <div style={{ position: "relative" }}>
-                        <input
-                          className={`employeedetails-detail-input ${kycErrors.panNo ? "employeedetails-input-error" : ""
-                            }`}
-                          type="text"
-                          value={showPan ? (formData.panNo || "") : maskPanLocal(formData.panNo || "")}
-                          onChange={(e) => handleKycChange("panNo", e.target.value)}
-                          maxLength={10}
-                          placeholder="ABCDE1234F"
-                          disabled={!canEditField("panNo")}
-                        />
-                        <button
-                          type="button"
-                          className="employeedetails-visibility-toggle"
-                          onClick={togglePanVisibility}
-                          style={{
-                            position: "absolute",
-                            right: "12px",
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: "#6b7280",
-                            display: "flex",
-                            alignItems: "center"
-                          }}
-                          disabled={isFetchingPan}
-                        >
-                          {isFetchingPan ? (
-                            <div className="spinner-border spinner-border-sm" role="status"></div>
-                          ) : (
-                            <Icon icon={showPan ? "lucide:eye-off" : "lucide:eye"} width={20} />
-                          )}
-                        </button>
-                      </div>
-                      {kycErrors.panNo && (
-                        <div className="employeedetails-field-error">
-                          {kycErrors.panNo}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div id="field-wrapper-aadhaarFile" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("aadhaarFile")) ? "block" : "none" }}>
-                    <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>Aadhaar Upload</span>
-                      <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: '500' }}>* Note: Only use the masked aadhar files only</span>
-                    </div>
-                    <div className="employeedetails-file-upload-container">
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        onChange={(e) => handleFileChange("aadhaarFile", e.target.files[0], e.target)}
-                        className="employeedetails-detail-input"
-                        disabled={!canEditField("aadhaarFile")}
-                      />
-
-                      {filePreviews.aadhaarFile && (
-                        <div className="employeedetails-file-name">
-                          Existing File: {getFileName(filePreviews.aadhaarFile)}
-                        </div>
-                      )}
-
-                      {renderFilePreview("aadhaarFile", "Aadhaar Upload")}
-                    </div>
-                  </div>
-
-                  <div id="field-wrapper-panFile" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("panFile")) ? "block" : "none" }}>
-                    <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>PAN Card</span>
-                    </div>
-                    <div className="employeedetails-file-upload-container">
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        onChange={(e) => handleFileChange("panFile", e.target.files[0], e.target)}
-                        className="employeedetails-detail-input"
-                        disabled={!canEditField("panFile")}
-                      />
-
-                      {filePreviews.panFile && (
-                        <div className="employeedetails-file-name">
-                          Existing File: {getFileName(filePreviews.panFile)}
-                        </div>
-                      )}
-
-                      {renderFilePreview("panFile", "PAN Card")}
-                    </div>
-                  </div>
+            {/* ================= STEP 6: KYC & BANK DETAILS ================= */}
+            {(isRestrictedEditMode ? isStepVisible(6) : activeStep === 6) && (
+              <div className="onboarding-step-content step-6-kyc-bank">
+                <div className="onboarding-step-header mb-4">
+                  <h6 className="employeedetails-section-title mb-1">{isRestrictedEditMode ? "KYC & Bank Details" : "Step 6: KYC & Bank Details"}</h6>
+                  <p className="text-muted small mb-0">Identity verification, optional Provident Fund details, and banking information.</p>
                 </div>
-                <Divider />
-              </>
-            )}
 
-            {/* ===== PF DETAILS ===== */}
-            {visibleSections.includes("pf") && (
-              <>
-                <h6 className="employeedetails-section-title">PF Details (Optional)</h6>
-                <div className="employeedetails-row">
-                  <DetailInput
-                    label="PF Number"
-                    value={formData.pfNo}
-                    onChange={(v) => handleChange("pfNo", v)}
-                    disabled={!canEditField()} visible={canEditField()}
-                  />
-                </div>
-                <Divider />
-              </>
-            )}
-
-            {/* ===== BANK DETAILS ===== */}
-            {(visibleSections.includes("bank") || visibleSections.includes("kycBank")) && (
-              <>
-                <h6 className="employeedetails-section-title">Bank Details</h6>
-                <div className="employeedetails-row">
-                  <DetailInput
-                    id="field-wrapper-bankName"
-                    label="Bank Name"
-                    value={formData.bankName}
-                    onChange={(v) => handleChange("bankName", v)}
-                    disabled={!canEditField("bankName")}
-                    visible={!isRejectedMode || canEditField("bankName")}
-                  />
-                  <DetailInput
-                    id="field-wrapper-accountHolder"
-                    label="Account Holder Name"
-                    value={formData.accountHolder}
-                    onChange={(v) => handleChange("accountHolder", v)}
-                    disabled={!canEditField("accountHolder")}
-                    visible={!isRejectedMode || canEditField("accountHolder")}
-                  />
-
-                  <div id="field-wrapper-accountNumber" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("accountNumber")) ? "block" : "none" }}>
-                    <div className="employeedetails-detail-label">Account Number</div>
-                    <div className="employeedetails-field-wrapper">
-                      <input
-                        type="text"
-                        placeholder="Enter 9–18 digit account number"
-                        value={formData.accountNumber || ""}
-                        onChange={(e) => handleAccountNumberChange(e.target.value)}
-                        maxLength={18}
-                        inputMode="numeric"
-                        className={`employeedetails-detail-input ${bankErrors.accountNumber ? "employeedetails-input-error" : ""
-                          } ${!canEditField("accountNumber") ? "employeedetails-input-locked" : ""}`}
-                        disabled={!canEditField("accountNumber")}
-                        readOnly={!canEditField("accountNumber")}
-                      />
-                      {bankErrors.accountNumber && (
-                        <div className="employeedetails-field-error">
-                          {bankErrors.accountNumber}
-                        </div>
-                      )}
-                    </div>
+                {/* Subsection A: KYC Details */}
+                {(isFieldVisible("aadhaarNo") || isFieldVisible("panNo") || isFieldVisible("aadhaarFile") || isFieldVisible("panFile")) && (
+                <div className="onboarding-subsection-card">
+                  <div className="onboarding-subsection-header">
+                    <h6 className="onboarding-subsection-title">
+                      <Icon icon="lucide:shield-check" className="text-primary" /> Subsection A: KYC Details
+                    </h6>
+                    <span className="badge bg-light text-secondary border" style={{ fontSize: "11px" }}>Required</span>
                   </div>
-
-                  <div id="field-wrapper-ifscCode" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("ifscCode")) ? "block" : "none" }}>
-                    <div className="employeedetails-detail-label">IFSC Code</div>
-                    <div className="employeedetails-field-wrapper">
-                      <input
-                        type="text"
-                        placeholder="Enter IFSC Code (e.g. HDFC0001234)"
-                        value={formData.ifscCode || ""}
-                        onChange={(e) => handleIfscChange(e.target.value)}
-                        maxLength={11}
-                        className={`employeedetails-detail-input ${bankErrors.ifscCode ? "employeedetails-input-error" : ""
-                          } ${!canEditField("ifscCode") ? "employeedetails-input-locked" : ""}`}
-                        disabled={!canEditField("ifscCode")}
-                        readOnly={!canEditField("ifscCode")}
-                      />
-                      {bankErrors.ifscCode && (
-                        <div className="employeedetails-field-error">
-                          {bankErrors.ifscCode}
-                        </div>
-                      )}
-                      {isIFSCFetching && (
-                        <div className="employeedetails-ifsc-loading" style={{ color: "#667eea", fontSize: "12px", marginTop: "4px" }}>
-                          Fetching bank details...
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div id="field-wrapper-branch" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("branch")) ? "block" : "none" }}>
-                    <div className="employeedetails-detail-label">Branch Name</div>
-                    <div className="employeedetails-field-wrapper">
-                      <input
-                        type="text"
-                        placeholder="Enter Branch Name"
-                        value={formData.branch || ""}
-                        onChange={(e) => handleChange("branch", e.target.value)}
-                        className={`employeedetails-detail-input ${!canEditField("branch") ? "employeedetails-input-locked" : ""}`}
-                        disabled={!canEditField("branch")}
-                        readOnly={!canEditField("branch")}
-                      />
-                    </div>
-                  </div>
-
-                  {/* 🔥 NEW: End Date for Previous Account (Only if changed) */}
-                  {formData.accountNumber && originalAccountNumber && formData.accountNumber !== originalAccountNumber && !formData.accountNumber.includes("X") && (
-                    <div className="employeedetails-col-md-12 employeedetails-mb-4">
-                      <div className="employeedetails-detail-label" style={{ color: "#667eea", fontWeight: "600" }}>
-                        End Date of Previous Account (To Date)
-                      </div>
+                  <div className="employeedetails-row">
+                    <div id="field-wrapper-aadhaarNo" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("aadhaarNo") ? "block" : "none" }}>
+                      <div className="employeedetails-detail-label">Aadhaar No (12 digit)</div>
                       <div className="employeedetails-field-wrapper">
-                        <input
-                          type="date"
-                          value={formData.toDate || ""}
-                          onChange={(e) => handleChange("toDate", e.target.value)}
-                          className="employeedetails-detail-input"
-                          style={{ border: "2px solid #667eea" }}
-                        />
-                        <small style={{ color: "#718096", display: "block", marginTop: "4px" }}>
-                          Select the date when your previous account became inactive.
-                        </small>
+                        <div style={{ position: "relative" }}>
+                          <input
+                            className={`employeedetails-detail-input ${kycErrors.aadhaarNo ? "employeedetails-input-error" : ""}`}
+                            type="text"
+                            value={showAadhaar ? (formData.aadhaarNo || "") : maskAadhaarLocal(formData.aadhaarNo || "")}
+                            onChange={(e) => handleKycChange("aadhaarNo", e.target.value)}
+                            maxLength={12}
+                            placeholder="Enter 12-digit Aadhaar number"
+                            disabled={!canEditField("aadhaarNo")}
+                          />
+                          <button
+                            type="button"
+                            className="employeedetails-visibility-toggle"
+                            onClick={toggleAadhaarVisibility}
+                            style={{
+                              position: "absolute",
+                              right: "12px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "#6b7280",
+                              display: "flex",
+                              alignItems: "center"
+                            }}
+                            disabled={isFetchingAadhaar}
+                          >
+                            {isFetchingAadhaar ? (
+                              <div className="spinner-border spinner-border-sm" role="status"></div>
+                            ) : (
+                              <Icon icon={showAadhaar ? "lucide:eye-off" : "lucide:eye"} width={20} />
+                            )}
+                          </button>
+                        </div>
+                        {kycErrors.aadhaarNo && (
+                          <div className="employeedetails-field-error">
+                            {kycErrors.aadhaarNo}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
 
-                  <div id="field-wrapper-passbookFile" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: (!isRejectedMode || canEditField("passbookFile")) ? "block" : "none" }}>
-                    <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>Bank Passbook/Cancelled Cheque</span>
-                    </div>
-                    <div className="employeedetails-file-upload-container">
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        onChange={(e) => handleFileChange("passbookFile", e.target.files[0], e.target)}
-                        className="employeedetails-detail-input"
-                        disabled={!canEditField("passbookFile")}
-                      />
-
-                      {filePreviews.passbookFile && (
-                        <div className="employeedetails-file-name">
-                          Existing File: {getFileName(filePreviews.passbookFile)}
+                    <div id="field-wrapper-panNo" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("panNo") ? "block" : "none" }}>
+                      <div className="employeedetails-detail-label">PAN Number</div>
+                      <div className="employeedetails-field-wrapper">
+                        <div style={{ position: "relative" }}>
+                          <input
+                            className={`employeedetails-detail-input ${kycErrors.panNo ? "employeedetails-input-error" : ""}`}
+                            type="text"
+                            value={showPan ? (formData.panNo || "") : maskPanLocal(formData.panNo || "")}
+                            onChange={(e) => handleKycChange("panNo", e.target.value)}
+                            maxLength={10}
+                            placeholder="ABCDE1234F"
+                            disabled={!canEditField("panNo")}
+                          />
+                          <button
+                            type="button"
+                            className="employeedetails-visibility-toggle"
+                            onClick={togglePanVisibility}
+                            style={{
+                              position: "absolute",
+                              right: "12px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "#6b7280",
+                              display: "flex",
+                              alignItems: "center"
+                            }}
+                            disabled={isFetchingPan}
+                          >
+                            {isFetchingPan ? (
+                              <div className="spinner-border spinner-border-sm" role="status"></div>
+                            ) : (
+                              <Icon icon={showPan ? "lucide:eye-off" : "lucide:eye"} width={20} />
+                            )}
+                          </button>
                         </div>
-                      )}
+                        {kycErrors.panNo && (
+                          <div className="employeedetails-field-error">
+                            {kycErrors.panNo}
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
-                      {renderFilePreview("passbookFile", "Passbook")}
+                    <div id="field-wrapper-aadhaarFile" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("aadhaarFile") ? "block" : "none" }}>
+                      <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>Aadhaar Upload</span>
+                        <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: '500' }}>* Note: Only use the masked aadhar files only</span>
+                      </div>
+                      <div className="employeedetails-file-upload-container">
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => handleFileChange("aadhaarFile", e.target.files[0], e.target)}
+                          className="employeedetails-detail-input"
+                          disabled={!canEditField("aadhaarFile")}
+                        />
+
+                        {filePreviews.aadhaarFile && (
+                          <div className="employeedetails-file-name">
+                            Existing File: {getFileName(filePreviews.aadhaarFile)}
+                          </div>
+                        )}
+
+                        {renderFilePreview("aadhaarFile", "Aadhaar Upload")}
+                      </div>
+                    </div>
+
+                    <div id="field-wrapper-panFile" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("panFile") ? "block" : "none" }}>
+                      <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>PAN Card</span>
+                      </div>
+                      <div className="employeedetails-file-upload-container">
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => handleFileChange("panFile", e.target.files[0], e.target)}
+                          className="employeedetails-detail-input"
+                          disabled={!canEditField("panFile")}
+                        />
+
+                        {filePreviews.panFile && (
+                          <div className="employeedetails-file-name">
+                            Existing File: {getFileName(filePreviews.panFile)}
+                          </div>
+                        )}
+
+                        {renderFilePreview("panFile", "PAN Card")}
+                      </div>
                     </div>
                   </div>
                 </div>
-                <Divider />
-              </>
-            )}
+                )}
 
-            {/* ===== DOCUMENTS ===== */}
-            {visibleSections.includes("documents") && (
-              <>
-                <h6 className="employeedetails-section-title">Documents Upload</h6>
-                <div className="employeedetails-row">
-                  <div className="employeedetails-col-md-6 employeedetails-mb-4">
-                    <FileUploadWithPreview
-                      label="Profile Picture"
-                      onChange={(f, inputEl) => handleFileChange("picture", f, inputEl)}
-                      accept="image/*"
-                      preview={getFilePreview("picture")}
-                      existingFileName={filePreviews.picture}
-                      disabled={!canEditField()} visible={canEditField()}
+                {/* Subsection B: PF Details (Optional) */}
+                {(isFieldVisible("uanNo") || isFieldVisible("pfNo")) && (
+                <div className="onboarding-subsection-card">
+                  <div className="onboarding-subsection-header">
+                    <h6 className="onboarding-subsection-title">
+                      <Icon icon="lucide:file-text" className="text-secondary" /> Subsection B: PF Details (Optional)
+                    </h6>
+                    <span className="badge bg-secondary text-white" style={{ fontSize: "11px" }}>Optional</span>
+                  </div>
+                  <div className="employeedetails-row">
+                    <DetailInput
+                      id="field-wrapper-uanNo"
+                      label="UAN Number (Universal Account Number)"
+                      labelStyle={{ whiteSpace: "nowrap" }}
+                      value={formData.uanNo}
+                      onChange={(v) => handleChange("uanNo", v)}
+                      disabled={!canEditField("uanNo")}
+                      visible={isFieldVisible("uanNo")}
+                    />
+                    <DetailInput
+                      id="field-wrapper-pfNo"
+                      label="PF Number"
+                      value={formData.pfNo}
+                      onChange={(v) => handleChange("pfNo", v)}
+                      disabled={!canEditField("pfNo")}
+                      visible={isFieldVisible("pfNo")}
                     />
                   </div>
                 </div>
+                )}
 
-              </>
+                {/* Subsection C: Bank Details */}
+                {(isFieldVisible("bankName") || isFieldVisible("accountHolder") || isFieldVisible("accountNumber") || isFieldVisible("ifscCode") || isFieldVisible("branch") || isFieldVisible("passbookFile")) && (
+                <div className="onboarding-subsection-card">
+                  <div className="onboarding-subsection-header">
+                    <h6 className="onboarding-subsection-title">
+                      <Icon icon="lucide:landmark" className="text-success" /> Subsection C: Bank Details
+                    </h6>
+                    <span className="badge bg-light text-secondary border" style={{ fontSize: "11px" }}>Required</span>
+                  </div>
+                  <div className="employeedetails-row">
+                    <DetailInput
+                      id="field-wrapper-bankName"
+                      label="Bank Name"
+                      value={formData.bankName}
+                      onChange={(v) => handleChange("bankName", v)}
+                      disabled={!canEditField("bankName")}
+                      visible={isFieldVisible("bankName")}
+                    />
+                    <DetailInput
+                      id="field-wrapper-accountHolder"
+                      label="Account Holder Name"
+                      value={formData.accountHolder}
+                      onChange={(v) => handleChange("accountHolder", v)}
+                      disabled={!canEditField("accountHolder")}
+                      visible={isFieldVisible("accountHolder")}
+                    />
+
+                    <div id="field-wrapper-accountNumber" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("accountNumber") ? "block" : "none" }}>
+                      <div className="employeedetails-detail-label">Account Number</div>
+                      <div className="employeedetails-field-wrapper">
+                        <div style={{ position: "relative" }}>
+                          <input
+                            type="text"
+                            placeholder="Enter 9–18 digit account number"
+                            value={showAccountNumber ? (formData.accountNumber || "") : maskAccountNumberLocal(formData.accountNumber || "")}
+                            onChange={(e) => handleAccountNumberChange(e.target.value)}
+                            maxLength={18}
+                            inputMode="numeric"
+                            className={`employeedetails-detail-input ${bankErrors.accountNumber ? "employeedetails-input-error" : ""} ${!canEditField("accountNumber") ? "employeedetails-input-locked" : ""}`}
+                            disabled={!canEditField("accountNumber")}
+                            readOnly={!canEditField("accountNumber")}
+                          />
+                          <button
+                            type="button"
+                            className="employeedetails-visibility-toggle"
+                            onClick={toggleAccountNumberVisibility}
+                            style={{
+                              position: "absolute",
+                              right: "12px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "#6b7280",
+                              display: "flex",
+                              alignItems: "center"
+                            }}
+                            disabled={isFetchingAccountNumber}
+                          >
+                            {isFetchingAccountNumber ? (
+                              <div className="spinner-border spinner-border-sm" role="status"></div>
+                            ) : (
+                              <Icon icon={showAccountNumber ? "lucide:eye-off" : "lucide:eye"} width={20} />
+                            )}
+                          </button>
+                        </div>
+                        {bankErrors.accountNumber && (
+                          <div className="employeedetails-field-error">
+                            {bankErrors.accountNumber}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div id="field-wrapper-ifscCode" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("ifscCode") ? "block" : "none" }}>
+                      <div className="employeedetails-detail-label">IFSC Code</div>
+                      <div className="employeedetails-field-wrapper">
+                        <input
+                          type="text"
+                          placeholder="Enter IFSC Code (e.g. HDFC0001234)"
+                          value={formData.ifscCode || ""}
+                          onChange={(e) => handleIfscChange(e.target.value)}
+                          maxLength={11}
+                          className={`employeedetails-detail-input ${bankErrors.ifscCode ? "employeedetails-input-error" : ""} ${!canEditField("ifscCode") ? "employeedetails-input-locked" : ""}`}
+                          disabled={!canEditField("ifscCode")}
+                          readOnly={!canEditField("ifscCode")}
+                        />
+                        {bankErrors.ifscCode && (
+                          <div className="employeedetails-field-error">
+                            {bankErrors.ifscCode}
+                          </div>
+                        )}
+                        {isIFSCFetching && (
+                          <div className="employeedetails-ifsc-loading" style={{ color: "#667eea", fontSize: "12px", marginTop: "4px" }}>
+                            Fetching bank details...
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div id="field-wrapper-branch" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("branch") ? "block" : "none" }}>
+                      <div className="employeedetails-detail-label">Branch Name</div>
+                      <div className="employeedetails-field-wrapper">
+                        <input
+                          type="text"
+                          placeholder="Enter Branch Name"
+                          value={formData.branch || ""}
+                          onChange={(e) => handleChange("branch", e.target.value)}
+                          className={`employeedetails-detail-input ${!canEditField("branch") ? "employeedetails-input-locked" : ""}`}
+                          disabled={!canEditField("branch")}
+                          readOnly={!canEditField("branch")}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 🔥 NEW: End Date for Previous Account (Only if changed) */}
+                    {isFieldVisible("accountNumber") && formData.accountNumber && originalAccountNumber && formData.accountNumber !== originalAccountNumber && !formData.accountNumber.includes("X") && (
+                      <div className="employeedetails-col-md-12 employeedetails-mb-4">
+                        <div className="employeedetails-detail-label" style={{ color: "#667eea", fontWeight: "600" }}>
+                          End Date of Previous Account (To Date)
+                        </div>
+                        <div className="employeedetails-field-wrapper">
+                          <input
+                            type="date"
+                            value={formData.toDate || ""}
+                            onChange={(e) => handleChange("toDate", e.target.value)}
+                            className="employeedetails-detail-input"
+                            style={{ border: "2px solid #667eea" }}
+                          />
+                          <small style={{ color: "#718096", display: "block", marginTop: "4px" }}>
+                            Select the date when your previous account became inactive.
+                          </small>
+                        </div>
+                      </div>
+                    )}
+
+                    <div id="field-wrapper-passbookFile" className="employeedetails-col-md-6 employeedetails-mb-4" style={{ display: isFieldVisible("passbookFile") ? "block" : "none" }}>
+                      <div className="employeedetails-detail-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>Bank Passbook/Cancelled Cheque</span>
+                      </div>
+                      <div className="employeedetails-file-upload-container">
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => handleFileChange("passbookFile", e.target.files[0], e.target)}
+                          className="employeedetails-detail-input"
+                          disabled={!canEditField("passbookFile")}
+                        />
+
+                        {filePreviews.passbookFile && (
+                          <div className="employeedetails-file-name">
+                            Existing File: {getFileName(filePreviews.passbookFile)}
+                          </div>
+                        )}
+
+                        {renderFilePreview("passbookFile", "Passbook")}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                )}
+              </div>
             )}
 
-            {/* ===== FORM ACTIONS ===== */}
-            <div className="employeedetails-form-actions">
-              {isHrRestrictedFromEdit ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", width: "100%" }}>
-                  <div style={{
-                    background: "#fef3c7",
-                    border: "1px solid #f59e0b",
-                    color: "#92400e",
-                    padding: "10px 18px",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    fontWeight: "500",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px"
-                  }}>
-                    <span>⚠️</span>
-                    <span>Direct editing of employee profiles is disabled for HR by Administrator Configuration.</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="employeedetails-btn-save"
-                    style={{ background: "#3A466D", cursor: "pointer" }}
-                    onClick={() => navigate("/admin/employees/manage-employee")}
-                  >
-                    Back to Employee Directory
-                  </button>
+            {/* ================= STEP 7: PROFILE PICTURE ================= */}
+            {((isRestrictedEditMode ? isStepVisible(7) : activeStep === 7) && isFieldVisible("picture")) && (
+              <div className="onboarding-step-content step-7-picture">
+                <div className="onboarding-step-header mb-4 text-center">
+                  <h6 className="employeedetails-section-title mb-1">{isRestrictedEditMode ? "Profile Picture" : "Step 7: Profile Picture"}</h6>
+                  <p className="text-muted small mb-0">Upload a professional portrait photograph for your employee profile.</p>
                 </div>
-              ) : (
-                <>
-                  {!effectiveIsAdmin && !canEditProfile && (
-                    <p style={{ color: "#f44336", marginBottom: "10px", fontSize: "14px" }}>
-                      {editMessage || "You are not allowed to edit your profile. Please send a request."}
-                    </p>
-                  )}
-                  <button
-                    className="employeedetails-btn-save"
-                    onClick={handleSave}
-                    disabled={isSaving || (!effectiveIsAdmin && !canEditProfile)}
-                  >
-                    {isSaving
-                      ? "Saving..."
-                      : approvalStatus === "rejected"
-                        ? "Resubmit for Admin Review"
-                        : "Save Changes"}
-                  </button>
-                </>
-              )}
-            </div>
+
+                <div className="onboarding-avatar-card">
+                  <div className="onboarding-avatar-preview-wrapper" id="field-wrapper-picture">
+                    {getFilePreview("picture") ? (
+                      <img
+                        src={getFilePreview("picture")}
+                        alt="Profile Preview"
+                        className="onboarding-avatar-img"
+                      />
+                    ) : filePreviews.picture ? (
+                      <img
+                        src={filePreviews.picture}
+                        alt="Profile"
+                        className="onboarding-avatar-img"
+                      />
+                    ) : (
+                      <div className="onboarding-avatar-placeholder">
+                        <Icon icon="lucide:user" width={72} height={72} color="#94a3b8" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="onboarding-avatar-controls mt-3 text-center">
+                    <label
+                      className={`employeedetails-btn employeedetails-btn-primary ${!canEditField("picture") ? "disabled" : ""}`}
+                      style={{
+                        cursor: canEditField("picture") ? "pointer" : "not-allowed",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "10px 24px",
+                        fontSize: "14px",
+                        fontWeight: "600",
+                        borderRadius: "8px",
+                      }}
+                    >
+                      <Icon icon="lucide:camera" width={18} height={18} />
+                      {getFilePreview("picture") || filePreviews.picture ? "Change Photograph" : "Upload Photograph"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: "none" }}
+                        disabled={!canEditField("picture")}
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          if (file) {
+                            handleFileChange("picture", file, e.target);
+                          }
+                        }}
+                      />
+                    </label>
+
+                    {filePreviews.picture && (
+                      <div className="employeedetails-file-name mt-2" style={{ fontSize: "12px", color: "#64748b" }}>
+                        Existing File: {getFileName(filePreviews.picture)}
+                      </div>
+                    )}
+
+                    <div className="text-muted small mt-2">
+                      Formats: JPG, PNG, WEBP. Maximum file size: 5MB. Photo will open in cropper.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Onboarding Checklist Summary Panel */}
+                {!isRestrictedEditMode && (
+                <div className="onboarding-summary-panel mt-5 p-4 rounded border bg-light">
+                  <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+                    <h6 className="mb-0 fw-bold text-dark" style={{ fontSize: "15px" }}>
+                      📋 Onboarding Completion Checklist
+                    </h6>
+                    <span className="badge bg-primary px-3 py-1" style={{ fontSize: "12px", borderRadius: "12px" }}>
+                      Profile Completion: {profileCompletion}%
+                    </span>
+                  </div>
+                  <div className="row g-2">
+                    {ONBOARDING_STEPS.map((s) => {
+                      const st = getStepStatus(s.id);
+                      const stBadge =
+                        st === "complete" ? "bg-success text-white" : st === "partial" ? "bg-warning text-dark" : "bg-danger text-white";
+                      const stText =
+                        st === "complete" ? "Complete" : st === "partial" ? "Partially Complete" : "Incomplete";
+
+                      return (
+                        <div key={s.id} className="col-md-6 col-lg-4">
+                          <div
+                            className="p-2 px-3 rounded bg-white border d-flex align-items-center justify-content-between"
+                            style={{ cursor: isSaving ? "not-allowed" : "pointer", transition: "all 0.15s ease", opacity: isSaving ? 0.6 : 1 }}
+                            onClick={() => {
+                              if (!isSaving) {
+                                handleStepNavigation(s.id);
+                              }
+                            }}
+                            title={`Click to review Step ${s.id}`}
+                          >
+                            <span className="small fw-semibold text-truncate">
+                              {s.id}. {s.title}
+                            </span>
+                            <span className={`badge ${stBadge} ms-2`} style={{ fontSize: "11px" }}>
+                              {stText}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                )}
+              </div>
+            )}
+
+            {/* ================= BOTTOM NAVIGATION CONTROLS ================= */}
+            {isRestrictedEditMode ? (
+              <div
+                className="employeedetails-form-actions mt-4 pt-3 border-top d-flex align-items-center justify-content-end gap-2"
+                style={{ paddingRight: "80px" }}
+              >
+                {!effectiveIsAdmin && !canEditProfile && (
+                  <p style={{ color: "#f44336", marginBottom: "0", fontSize: "14px" }}>
+                    {editMessage || "You are not allowed to edit your profile. Please send a request."}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="common-modal-btn btn-update"
+                  onClick={handleSave}
+                  disabled={isSaving || (!effectiveIsAdmin && !canEditProfile)}
+                >
+                  {isSaving
+                    ? "Saving..."
+                    : effectiveIsAdmin
+                      ? "Save Changes"
+                      : "Save Profile"}
+                </button>
+              </div>
+            ) : (
+              <div className="onboarding-wizard-footer mt-4 pt-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-3">
+                {(() => {
+                  const currentStepIndex = visibleSteps.findIndex((s) => s.id === activeStep);
+                  const isFirstVisibleStep = currentStepIndex <= 0;
+                  const isLastVisibleStep = currentStepIndex >= visibleSteps.length - 1;
+                  const prevStepId = !isFirstVisibleStep ? visibleSteps[currentStepIndex - 1]?.id : null;
+                  const nextStepId = !isLastVisibleStep ? visibleSteps[currentStepIndex + 1]?.id : null;
+
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        className="employeedetails-btn employeedetails-btn-outline-secondary"
+                        onClick={() => prevStepId && handleStepNavigation(prevStepId)}
+                        disabled={isFirstVisibleStep || isSaving}
+                        style={{
+                          minWidth: "120px",
+                          opacity: isFirstVisibleStep || isSaving ? 0.45 : 1,
+                          cursor: isFirstVisibleStep || isSaving ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        ← Previous
+                      </button>
+
+                      <div className="text-muted small fw-medium text-center">
+                        Step <strong className="text-dark">{Math.max(1, currentStepIndex + 1)}</strong> of{" "}
+                        <strong>{visibleSteps.length}</strong>:{" "}
+                        <span className="text-primary fw-semibold">
+                          {visibleSteps[currentStepIndex]?.title || ONBOARDING_STEPS.find((s) => s.id === activeStep)?.title}
+                        </span>
+                      </div>
+
+                      {!isLastVisibleStep ? (
+                        <button
+                          type="button"
+                          className="employeedetails-btn employeedetails-btn-primary"
+                          onClick={() => {
+                            if (isRestrictedEditMode) {
+                              handleStepNavigation(nextStepId);
+                            } else {
+                              handleSaveAndContinue();
+                            }
+                          }}
+                          disabled={isSaving}
+                          style={{ minWidth: "150px" }}
+                        >
+                          {isSaving ? "Saving..." : "Save and Continue →"}
+                        </button>
+                      ) : (
+                        <div className="employeedetails-form-actions p-0 m-0 border-0 d-flex align-items-center gap-2">
+                          {isHrRestrictedFromEdit ? (
+                            <button
+                              type="button"
+                              className="employeedetails-btn-save"
+                              style={{ background: "#3A466D", cursor: "pointer" }}
+                              onClick={() => navigate("/admin/employees/manage-employee")}
+                            >
+                              Back to Employee Directory
+                            </button>
+                          ) : (
+                            <>
+                              {!effectiveIsAdmin && !canEditProfile && (
+                                <p style={{ color: "#f44336", marginBottom: "10px", fontSize: "14px" }}>
+                                  {editMessage || "You are not allowed to edit your profile. Please send a request."}
+                                </p>
+                              )}
+                              <button
+                                type="button"
+                                className="employeedetails-btn employeedetails-btn-primary"
+                                onClick={handleSave}
+                                disabled={isSaving || (!effectiveIsAdmin && !canEditProfile)}
+                                style={{ minWidth: "150px" }}
+                              >
+                                {isSaving
+                                  ? "Submitting..."
+                                  : effectiveIsAdmin
+                                    ? "Save Changes"
+                                    : isRejectedStatus
+                                      ? "Send for Approve"
+                                      : "Send Admin for Approve"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -5792,11 +7463,12 @@ const DetailInput = ({
   onKeyDown,
   visible = true,
   id,
+  labelStyle,
 }) => {
   if (!visible) return null;
   return (
     <div id={id} className={`employeedetails-col-md-${full ? "12" : "6"} employeedetails-mb-4`}>
-      <div className="employeedetails-detail-label">{label}</div>
+      <div className="employeedetails-detail-label" style={labelStyle}>{label}</div>
       <input
         className={`employeedetails-detail-input ${disabled ? "employeedetails-input-locked" : ""}`}
         type={type}

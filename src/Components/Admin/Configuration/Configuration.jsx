@@ -1,11 +1,78 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { portalInstance } from "../../../Services/instance";
 import { toast, ToastContainer } from "react-toastify";
 import Sidebar from "../../HeaderSidebar/Sidebar";
 import { Icon } from "@iconify/react";
+import CustomDropdown from "../../Common/CustomDropdown";
 import "./Configuration.css";
 
+const PORTAL_MENUS = [
+  {
+    module: "Employees",
+    icon: "solar:users-group-two-rounded-bold",
+    subItems: ["Add Employee", "Manage Employee"],
+  },
+  {
+    module: "Attendance",
+    icon: "solar:clock-circle-bold",
+    subItems: ["Daily Report", "Attendance Report"],
+  },
+  {
+    module: "Tasks",
+    icon: "solar:checklist-minimalistic-bold",
+    subItems: ["Task List", "Task Analytics"],
+  },
+  {
+    module: "Daily Work Update",
+    icon: "solar:document-text-bold",
+    subItems: [],
+  },
+  {
+    module: "Project Details",
+    icon: "solar:folder-with-files-bold",
+    subItems: [],
+  },
+  {
+    module: "Leaves & Holidays",
+    icon: "solar:calendar-bold",
+    subItems: ["Leave Requests", "Manage Leaves", "Holiday List", "Holiday Configuration"],
+  },
+  {
+    module: "Operation Hub",
+    icon: "solar:widget-bold",
+    subItems: [],
+  },
+  {
+    module: "Slip Generation",
+    icon: "solar:bill-list-bold",
+    subItems: ["Payslip", "Appointment Letter", "Termination Letter", "Increment Letter"],
+  },
+  {
+    module: "HR Requests",
+    icon: "solar:inbox-in-bold",
+    subItems: [],
+  },
+  {
+    module: "Audit Dashboard",
+    icon: "solar:shield-warning-bold",
+    subItems: ["Access Control", "Payment Scripts", "Inscope Vendors"],
+  },
+  {
+    module: "Web Crawler",
+    icon: "solar:radar-bold",
+    subItems: [],
+  },
+  {
+    module: "My Details",
+    icon: "solar:user-bold",
+    subItems: [],
+  },
+];
+
 const Configuration = () => {
+  // ── Top Level Navigation Tabs ──
+  const [activeTab, setActiveTab] = useState("policy-hr"); // "policy-hr" | "menu-access"
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [permanentFreeCount, setPermanentFreeCount] = useState(2);
@@ -15,6 +82,38 @@ const Configuration = () => {
   const [availableCategories, setAvailableCategories] = useState([]);
   const [financialYear, setFinancialYear] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
+
+  // ── Employee Menu Access State ──
+  const [employeesList, setEmployeesList] = useState([]);
+  const [menuAccessLoading, setMenuAccessLoading] = useState(false);
+  const [menuAccessSubmitting, setMenuAccessSubmitting] = useState(false);
+
+  // Form State for granting menu access
+  const [selectedEmpId, setSelectedEmpId] = useState("");
+  const [selectedModule, setSelectedModule] = useState("");
+  const [selectedSubMenu, setSelectedSubMenu] = useState("");
+  const [selectedPermission, setSelectedPermission] = useState("READ"); // "READ" | "WRITE"
+
+  // Edit Menu Access Popup Modal State
+  const [editModal, setEditModal] = useState({
+    isOpen: false,
+    item: null,
+    module: "",
+    subMenu: "",
+    permission: "READ",
+  });
+
+  // Search & Filter & Pagination State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterMenu, setFilterMenu] = useState("ALL");
+  const [filterAccess, setFilterAccess] = useState("ALL");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+
+  // Delete Confirmation Modal
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState({ isOpen: false, item: null });
+
+  const formCardRef = useRef(null);
 
   const defaultHrAccess = {
     slipAndLetter: "WRITE", // "READ" | "WRITE" | "FULL_ACCESS"
@@ -109,9 +208,258 @@ const Configuration = () => {
     }
   };
 
+  const fetchMenuPermissions = async () => {
+    try {
+      setMenuAccessLoading(true);
+      const res = await portalInstance.get("/menu-permission/all");
+      if (res.data?.success && res.data.data) {
+        setEmployeesList(res.data.data);
+      }
+    } catch (err) {
+      console.error("Failed to load menu permissions:", err);
+      toast.error("Failed to load employee menu permissions");
+    } finally {
+      setMenuAccessLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchConfig();
+    fetchMenuPermissions();
   }, []);
+
+  // Compute a flat list of granted menu permissions for the table
+  const flatPermissionsList = useMemo(() => {
+    const list = [];
+    employeesList.forEach((emp) => {
+      (emp.menus || []).forEach((m, idx) => {
+        if (m.permission && m.permission !== "NO_ACCESS") {
+          list.push({
+            id: `${emp.employeeId}_${m.module}_${m.subMenu || "entire"}_${idx}`,
+            employeeId: emp.employeeId,
+            employeeName: emp.employeeName,
+            empId: emp.empId,
+            department: emp.department || "General",
+            module: m.module,
+            subMenu: m.subMenu || null,
+            permission: m.permission,
+          });
+        }
+      });
+    });
+    return list;
+  }, [employeesList]);
+
+  // Sub-items for the currently selected menu in the form
+  const currentMenuSubItems = useMemo(() => {
+    const found = PORTAL_MENUS.find((m) => m.module === selectedModule);
+    return found ? found.subItems : [];
+  }, [selectedModule]);
+
+  // Dropdown options
+  const employeeOptions = useMemo(() => [
+    { label: "Choose Employee", value: "" },
+    ...employeesList.map((emp) => ({
+      label: emp.empId ? `${emp.employeeName} (${emp.empId})` : emp.employeeName,
+      value: emp.employeeId,
+    })),
+  ], [employeesList]);
+
+  const menuOptions = useMemo(() => [
+    { label: "Choose Menu", value: "" },
+    ...PORTAL_MENUS.map((m) => ({
+      label: m.module,
+      value: m.module,
+    })),
+  ], []);
+
+  const subMenuOptions = useMemo(() => {
+    if (!selectedModule) {
+      return [{ label: "Select Menu First", value: "" }];
+    }
+    if (currentMenuSubItems.length > 0) {
+      return [
+        { label: "Entire Menu (All Submenus)", value: "" },
+        ...currentMenuSubItems.map((sub) => ({ label: sub, value: sub })),
+      ];
+    }
+    return [{ label: "(Single Menu - No Submenus)", value: "" }];
+  }, [currentMenuSubItems, selectedModule]);
+
+  const filterMenuOptions = useMemo(() => [
+    { label: "All Menus", value: "ALL" },
+    ...PORTAL_MENUS.map((m) => ({ label: m.module, value: m.module })),
+  ], []);
+
+  const filterAccessOptions = useMemo(() => [
+    { label: "All Access Levels", value: "ALL" },
+    { label: "Read Only", value: "READ" },
+    { label: "Write", value: "WRITE" },
+  ], []);
+
+  // Sub-items and options for Edit Modal
+  const editModalSubItems = useMemo(() => {
+    const found = PORTAL_MENUS.find((m) => m.module === editModal.module);
+    return found ? found.subItems : [];
+  }, [editModal.module]);
+
+  const editModalSubMenuOptions = useMemo(() => {
+    if (!editModal.module) {
+      return [{ label: "Select Menu First", value: "" }];
+    }
+    if (editModalSubItems.length > 0) {
+      return [
+        { label: "Entire Menu (All Submenus)", value: "" },
+        ...editModalSubItems.map((sub) => ({ label: sub, value: sub })),
+      ];
+    }
+    return [{ label: "(Single Menu - No Submenus)", value: "" }];
+  }, [editModalSubItems, editModal.module]);
+
+  // Filtered and Paginated records for Menu Permissions Table
+  const filteredPermissions = useMemo(() => {
+    return flatPermissionsList.filter((item) => {
+      const search = searchTerm.trim().toLowerCase();
+      const matchSearch =
+        !search ||
+        item.employeeName?.toLowerCase().includes(search) ||
+        item.empId?.toLowerCase().includes(search) ||
+        item.module?.toLowerCase().includes(search) ||
+        (item.subMenu && item.subMenu.toLowerCase().includes(search));
+
+      const matchMenu = filterMenu === "ALL" || item.module === filterMenu;
+      const matchAccess = filterAccess === "ALL" || item.permission === filterAccess;
+
+      return matchSearch && matchMenu && matchAccess;
+    });
+  }, [flatPermissionsList, searchTerm, filterMenu, filterAccess]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPermissions.length / pageSize));
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredPermissions.slice(start, start + pageSize);
+  }, [filteredPermissions, currentPage, pageSize]);
+
+  // Handler: Assign Menu Permission (Top Card)
+  const handleAssignOrUpdateMenuAccess = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedEmpId) {
+      toast.error("Please select an employee");
+      return;
+    }
+    if (!selectedModule) {
+      toast.error("Please select a menu");
+      return;
+    }
+
+    setMenuAccessSubmitting(true);
+    try {
+      const payload = {
+        employeeId: selectedEmpId,
+        module: selectedModule,
+        subMenu: selectedSubMenu || null,
+        permission: selectedPermission,
+      };
+      const res = await portalInstance.post("/menu-permission/assign", payload);
+      if (res.data?.success) {
+        toast.success("Menu access granted successfully!");
+        setSelectedModule("");
+        setSelectedSubMenu("");
+        setSelectedPermission("READ");
+        window.dispatchEvent(new Event("menuPermissionsUpdated"));
+        fetchMenuPermissions();
+      } else {
+        toast.error(res.data?.message || "Failed to grant menu access");
+      }
+    } catch (err) {
+      console.error("Error saving menu access:", err);
+      toast.error(err.response?.data?.message || "Error saving menu access");
+    } finally {
+      setMenuAccessSubmitting(false);
+    }
+  };
+
+  // Open Edit Popup Modal
+  const handleStartEdit = (item) => {
+    setEditModal({
+      isOpen: true,
+      item,
+      module: item.module,
+      subMenu: item.subMenu || "",
+      permission: item.permission || "READ",
+    });
+  };
+
+  // Save changes from Edit Popup Modal
+  const handleSaveEditModal = async (e) => {
+    if (e) e.preventDefault();
+    if (!editModal.item) return;
+    if (!editModal.module) {
+      toast.error("Please select a menu");
+      return;
+    }
+
+    setMenuAccessSubmitting(true);
+    try {
+      const payload = {
+        employeeId: editModal.item.employeeId,
+        oldModule: editModal.item.module,
+        oldSubMenu: editModal.item.subMenu,
+        module: editModal.module,
+        subMenu: editModal.subMenu || null,
+        permission: editModal.permission,
+      };
+      const res = await portalInstance.put("/menu-permission/update-menu", payload);
+      if (res.data?.success) {
+        toast.success("Menu access updated successfully!");
+        setEditModal({ isOpen: false, item: null, module: "", subMenu: "", permission: "READ" });
+        window.dispatchEvent(new Event("menuPermissionsUpdated"));
+        fetchMenuPermissions();
+      } else {
+        toast.error(res.data?.message || "Failed to update menu access");
+      }
+    } catch (err) {
+      console.error("Error updating menu access:", err);
+      toast.error(err.response?.data?.message || "Error updating menu access");
+    } finally {
+      setMenuAccessSubmitting(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmModal.item) return;
+    const { employeeId, module, subMenu } = deleteConfirmModal.item;
+
+    setMenuAccessSubmitting(true);
+    try {
+      const res = await portalInstance.post("/menu-permission/revoke", {
+        employeeId,
+        module,
+        subMenu: subMenu || null,
+      });
+      if (res.data?.success) {
+        toast.success("Menu access deleted successfully!");
+        setDeleteConfirmModal({ isOpen: false, item: null });
+        if (
+          editModal.isOpen &&
+          editModal.item?.employeeId === employeeId &&
+          editModal.item?.module === module &&
+          editModal.item?.subMenu === subMenu
+        ) {
+          setEditModal({ isOpen: false, item: null, module: "", subMenu: "", permission: "READ" });
+        }
+        window.dispatchEvent(new Event("menuPermissionsUpdated"));
+        fetchMenuPermissions();
+      } else {
+        toast.error(res.data?.message || "Failed to delete menu access");
+      }
+    } catch (err) {
+      console.error("Error revoking menu access:", err);
+      toast.error(err.response?.data?.message || "Error deleting menu access");
+    } finally {
+      setMenuAccessSubmitting(false);
+    }
+  };
 
   // Track changes to enable the Save button when settings change
   useEffect(() => {
@@ -227,13 +575,34 @@ const Configuration = () => {
 
       <div className="config-page-wrapper">
         <div className="config-container">
-          {loading ? (
-            <div className="config-loading-card">
-              <div className="config-spinner"></div>
-              <span>Loading configuration...</span>
-            </div>
-          ) : (
-            <>
+          {/* Top Level Navigation Tabs */}
+          <div className="config-nav-tabs-wrapper">
+            <button
+              type="button"
+              className={`config-nav-tab-btn ${activeTab === "policy-hr" ? "active" : ""}`}
+              onClick={() => setActiveTab("policy-hr")}
+            >
+              <Icon icon="solar:shield-check-bold" width="18" />
+              <span>Policy & HR Access</span>
+            </button>
+            <button
+              type="button"
+              className={`config-nav-tab-btn ${activeTab === "menu-access" ? "active" : ""}`}
+              onClick={() => setActiveTab("menu-access")}
+            >
+              <Icon icon="solar:user-id-bold" width="18" />
+              <span>Employee Menu Access</span>
+            </button>
+          </div>
+
+          {activeTab === "policy-hr" && (
+            loading ? (
+              <div className="config-loading-card">
+                <div className="config-spinner"></div>
+                <span>Loading configuration...</span>
+              </div>
+            ) : (
+              <>
               {/* Panel 1: Policy & Permission Configuration */}
               <div className="config-main-panel">
               {/* Header inside Panel 1 with bottom arrow */}
@@ -242,9 +611,6 @@ const Configuration = () => {
                 onClick={() => setIsPolicyOpen((prev) => !prev)}
               >
                 <div className="config-collapsible-header-left">
-                  <div className="config-section-icon-box icon-purple">
-                    <Icon icon="solar:shield-user-bold" width="18" />
-                  </div>
                   <div className="config-header-text">
                     <h1 className="config-title" style={{ margin: 0 }}>Policy & Permission Configuration</h1>
                     <p className="config-subtitle">
@@ -1031,6 +1397,505 @@ const Configuration = () => {
                 </>
               )}
             </div>
+          </>
+        )
+      )}
+
+          {/* Tab 2: Employee Menu Access */}
+          {activeTab === "menu-access" && (
+            <>
+              {/* Form Card: Grant / Edit Menu Access */}
+              <div
+                ref={formCardRef}
+                className="config-menu-form-card"
+              >
+                <div className="config-panel-header">
+                  <div className="config-collapsible-header-left">
+                    <div className="config-section-icon-box icon-purple">
+                      <Icon icon="solar:shield-user-bold" width="20" />
+                    </div>
+                    <div className="config-header-text">
+                      <h2 className="config-title" style={{  margin: 0 }}>
+                        Grant Menu Access to Employee
+                      </h2>
+
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleAssignOrUpdateMenuAccess} className="config-form-wrapper">
+                  {/* Top Dropdowns Row: Select Employee, Select Menu, Select Sub-Menu */}
+                  <div className="config-form-grid-3">
+                    {/* Select Employee */}
+                    <div className="config-field-group">
+                      <label className="config-label">
+                        <span className="config-label-text">Select Employee</span>
+                      </label>
+                      <CustomDropdown
+                        className="config-field-dropdown"
+                        options={employeeOptions}
+                        value={selectedEmpId}
+                        onChange={(val) => setSelectedEmpId(val)}
+                        placeholder="Choose Employee"
+                        disabled={menuAccessSubmitting}
+                      />
+                    </div>
+
+                    {/* Select Menu */}
+                    <div className="config-field-group">
+                      <label className="config-label">
+                        <span className="config-label-text">Select Menu / Tab</span>
+                      </label>
+                      <CustomDropdown
+                        className="config-field-dropdown"
+                        options={menuOptions}
+                        value={selectedModule}
+                        onChange={(val) => {
+                          setSelectedModule(val);
+                          setSelectedSubMenu("");
+                        }}
+                        placeholder="Choose Menu"
+                        disabled={menuAccessSubmitting}
+                      />
+                    </div>
+
+                    {/* Select Sub-Menu */}
+                    <div className="config-field-group">
+                      <label className="config-label">
+                        <span className="config-label-text">Select Sub-Menu</span>
+                      </label>
+                      <CustomDropdown
+                        className="config-field-dropdown"
+                        options={subMenuOptions}
+                        value={selectedSubMenu}
+                        onChange={(val) => setSelectedSubMenu(val)}
+                        placeholder={
+                          !selectedModule
+                            ? "Select Menu First"
+                            : currentMenuSubItems.length > 0
+                            ? "Entire Menu (All Submenus)"
+                            : "(Single Menu - No Submenus)"
+                        }
+                        disabled={menuAccessSubmitting || !selectedModule || currentMenuSubItems.length === 0}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Bottom Row: Access Permission */}
+                  <div className="config-permission-bottom-row">
+                    <div className="config-field-group">
+                      <label className="config-label">
+                        <span className="config-label-text">Access Permission</span>
+                      </label>
+                      <div className="config-access-type-group">
+                        <button
+                          type="button"
+                          className={`config-access-type-btn ${selectedPermission === "READ" ? "active-read" : ""}`}
+                          onClick={() => setSelectedPermission("READ")}
+                        >
+                          <Icon icon="solar:eye-bold" width="16" />
+                          <span>Read</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`config-access-type-btn ${selectedPermission === "WRITE" ? "active-write" : ""}`}
+                          onClick={() => setSelectedPermission("WRITE")}
+                        >
+                          <Icon icon="solar:pen-new-square-bold" width="16" />
+                          <span>Write</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+
+                {/* Form Action Buttons */}
+                <div className="config-form-actions-bar">
+                  <button
+                    type="button"
+                    className="common-modal-btn btn-update"
+                    onClick={handleAssignOrUpdateMenuAccess}
+                    disabled={menuAccessSubmitting || !selectedEmpId || !selectedModule}
+                  >
+                    {menuAccessSubmitting ? "Granting Access..." : "Grant Access"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Table Panel: Configured Employee Menu Permissions */}
+              <div className="config-table-panel">
+                <div className="config-table-header-row">
+                  <div className="config-collapsible-header-left">
+                    <div className="config-section-icon-box icon-blue">
+                      <Icon icon="solar:users-group-rounded-bold" width="18" />
+                    </div>
+                    <div>
+                      <h2 className="config-title" style={{ margin: 0 }}>
+                        Configured Employee Menu Permissions
+                      </h2>
+                    </div>
+                  </div>
+
+                  <div className="config-table-toolbar">
+                    {/* Search by Employee, ID, or Menu */}
+                    <div className="config-search-box">
+                      <Icon icon="solar:magnifer-linear" width="16" color="#94a3b8" />
+                      <input
+                        type="text"
+                        className="config-search-input"
+                        placeholder="Search permissions..."
+                        value={searchTerm}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                      />
+                    </div>
+
+                    {/* Filter by Menu */}
+                    <CustomDropdown
+                      className="config-filter-dropdown"
+                      options={filterMenuOptions}
+                      value={filterMenu}
+                      onChange={(val) => {
+                        setFilterMenu(val);
+                        setCurrentPage(1);
+                      }}
+                      placeholder="All Menus"
+                    />
+
+                    {/* Filter by Access */}
+                    <CustomDropdown
+                      className="config-filter-dropdown"
+                      options={filterAccessOptions}
+                      value={filterAccess}
+                      onChange={(val) => {
+                        setFilterAccess(val);
+                        setCurrentPage(1);
+                      }}
+                      placeholder="All Access Levels"
+                    />
+                  </div>
+                </div>
+
+                {/* Permissions Table */}
+                {menuAccessLoading ? (
+                  <div className="config-loading-card" style={{ padding: "40px" }}>
+                    <div className="config-spinner"></div>
+                    <span>Loading permissions...</span>
+                  </div>
+                ) : filteredPermissions.length === 0 ? (
+                  <div className="config-empty-table">
+                    <Icon icon="solar:shield-warning-bold" width="40" color="#cbd5e1" />
+                    <p>No employee menu permissions found.</p>
+                    <span style={{ fontSize: "12px", color: "#94a3b8" }}>
+                      {searchTerm || filterMenu !== "ALL" || filterAccess !== "ALL"
+                        ? "Try adjusting your search or filters."
+                        : "Use the form above to grant menu access to an employee."}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="config-permissions-table-wrap">
+                      <table className="config-permissions-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: "50px", textAlign: "center" }}>#</th>
+                            <th>Employee</th>
+                            <th>Department</th>
+                            <th>Menu</th>
+                            <th>Sub-Menu</th>
+                            <th style={{ textAlign: "center" }}>Access Level</th>
+                            <th style={{ textAlign: "center", width: "160px" }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paginatedList.map((item, idx) => {
+                            const rowIndex = (currentPage - 1) * pageSize + idx + 1;
+                            const isCurrentlyEditing =
+                              editModal.isOpen &&
+                              editModal.item?.employeeId === item.employeeId &&
+                              editModal.item?.module === item.module &&
+                              editModal.item?.subMenu === item.subMenu;
+
+                            return (
+                              <tr
+                                key={item.id}
+                                style={isCurrentlyEditing ? { background: "#f5f3ff" } : {}}
+                              >
+                                <td style={{ textAlign: "center", fontWeight: 600, color: "#64748b" }}>
+                                  {rowIndex}
+                                </td>
+                                <td>
+                                  <div className="config-emp-cell">
+                                    <div className="config-emp-avatar">
+                                      {item.employeeName?.charAt(0)?.toUpperCase() || "E"}
+                                    </div>
+                                    <div className="config-emp-meta">
+                                      <span className="config-emp-name">{item.employeeName}</span>
+                                      <span className="config-emp-id-chip">{item.empId}</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>
+                                  <span className="config-submenu-chip">{item.department}</span>
+                                </td>
+                                <td>
+                                  <span className="config-module-chip">
+                                    <span>{item.module}</span>
+                                  </span>
+                                </td>
+                                <td>
+                                  {item.subMenu ? (
+                                    <span className="config-submenu-chip">{item.subMenu}</span>
+                                  ) : (
+                                    <span className="config-submenu-all-chip">Entire Menu</span>
+                                  )}
+                                </td>
+                                <td style={{ textAlign: "center" }}>
+                                  {item.permission === "WRITE" || item.permission === "BOTH" || item.permission === "FULL_ACCESS" ? (
+                                    <span className="config-access-badge write">
+                                      Write
+                                    </span>
+                                  ) : (
+                                    <span className="config-access-badge read">
+                                      Read
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ textAlign: "center" }}>
+                                  <div className="config-table-actions" style={{ justifyContent: "center" }}>
+                                    <button
+                                      type="button"
+                                      className="config-action-btn config-action-btn-edit"
+                                      title="Edit Access"
+                                      onClick={() => handleStartEdit(item)}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="config-action-btn config-action-btn-delete"
+                                      title="Revoke / Delete Access"
+                                      onClick={() => setDeleteConfirmModal({ isOpen: true, item })}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Table Pagination Bar */}
+                    <div className="config-pagination-bar">
+                      <span>
+                        Showing <strong>{(currentPage - 1) * pageSize + 1}</strong> to{" "}
+                        <strong>{Math.min(currentPage * pageSize, filteredPermissions.length)}</strong> of{" "}
+                        <strong>{filteredPermissions.length}</strong> permissions
+                      </span>
+
+                      <div className="config-pagination-btns">
+                        <button
+                          type="button"
+                          className="config-page-btn"
+                          disabled={currentPage <= 1}
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        >
+                          Previous
+                        </button>
+                        <span style={{ margin: "0 6px", fontWeight: 600 }}>
+                          Page {currentPage} of {totalPages}
+                        </span>
+                        <button
+                          type="button"
+                          className="config-page-btn"
+                          disabled={currentPage >= totalPages}
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Edit Menu Access Popup Modal */}
+              {editModal.isOpen && editModal.item && (
+                <div
+                  className="config-modal-backdrop"
+                  onClick={() => setEditModal({ isOpen: false, item: null, module: "", subMenu: "", permission: "READ" })}
+                >
+                  <div
+                    className="config-modal-card config-edit-modal-card"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="config-edit-modal-header">
+                      <div className="config-edit-modal-header-left">
+                        <div>
+                          <h3 className="config-edit-modal-title">Edit Menu Access</h3>
+                          <p className="config-edit-modal-subtitle">
+                            Modify menu permissions for <strong>{editModal.item.employeeName}</strong>
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="config-edit-modal-close"
+                        onClick={() => setEditModal({ isOpen: false, item: null, module: "", subMenu: "", permission: "READ" })}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="config-edit-modal-body">
+                      {/* Employee Summary Chip */}
+                      <div className="config-edit-emp-summary">
+                        <div className="config-emp-avatar">
+                          {editModal.item.employeeName?.charAt(0)?.toUpperCase() || "E"}
+                        </div>
+                        <div className="config-emp-meta">
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span className="config-emp-name" style={{ fontSize: "14px", fontWeight: "600" }}>
+                              {editModal.item.employeeName}
+                            </span>
+                            <span className="config-emp-id-chip">{editModal.item.empId}</span>
+                          </div>
+                          <span style={{ fontSize: "12px", color: "#64748b" }}>
+                            {editModal.item.department || "General"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Menu Field */}
+                      <div className="config-field-group">
+                        <label className="config-label">
+                          <span className="config-label-text">Select Menu / Tab</span>
+                        </label>
+                        <CustomDropdown
+                          className="config-field-dropdown"
+                          options={menuOptions}
+                          value={editModal.module}
+                          onChange={(val) => setEditModal((prev) => ({ ...prev, module: val, subMenu: "" }))}
+                          placeholder="Choose Menu"
+                          disabled={menuAccessSubmitting}
+                        />
+                      </div>
+
+                      {/* Sub-Menu Field */}
+                      <div className="config-field-group">
+                        <label className="config-label">
+                          <span className="config-label-text">Select Sub-Menu</span>
+                        </label>
+                        <CustomDropdown
+                          className="config-field-dropdown"
+                          options={editModalSubMenuOptions}
+                          value={editModal.subMenu}
+                          onChange={(val) => setEditModal((prev) => ({ ...prev, subMenu: val }))}
+                          placeholder={editModalSubItems.length > 0 ? "Entire Menu (All Submenus)" : "(Single Menu - No Submenus)"}
+                          disabled={menuAccessSubmitting || editModalSubItems.length === 0}
+                        />
+                      </div>
+
+                      {/* Access Permission Field */}
+                      <div className="config-field-group">
+                        <label className="config-label">
+                          <span className="config-label-text">Access Permission</span>
+                        </label>
+                        <div className="config-access-type-group">
+                          <button
+                            type="button"
+                            className={`config-access-type-btn ${editModal.permission === "READ" ? "active-read" : ""}`}
+                            onClick={() => setEditModal((prev) => ({ ...prev, permission: "READ" }))}
+                          >
+                            <Icon icon="solar:eye-bold" width="16" />
+                            <span>Read</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`config-access-type-btn ${
+                              editModal.permission === "WRITE" || editModal.permission === "BOTH" || editModal.permission === "FULL_ACCESS"
+                                ? "active-write"
+                                : ""
+                            }`}
+                            onClick={() => setEditModal((prev) => ({ ...prev, permission: "WRITE" }))}
+                          >
+                            <Icon icon="solar:pen-new-square-bold" width="16" />
+                            <span>Write</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="config-modal-actions" style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #f1f5f9" }}>
+                      <button
+                        type="button"
+                        className="common-modal-btn btn-small-cancel"
+                        onClick={() => setEditModal({ isOpen: false, item: null, module: "", subMenu: "", permission: "READ" })}
+                        disabled={menuAccessSubmitting}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="common-modal-btn btn-update"
+                        onClick={handleSaveEditModal}
+                        disabled={menuAccessSubmitting || !editModal.module}
+                        style={{ height: "38px", padding: "0 18px", fontSize: "13px" }}
+                      >
+                        {menuAccessSubmitting ? "Updating..." : "Update Access"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Revoke / Delete Confirmation Modal */}
+              {deleteConfirmModal.isOpen && deleteConfirmModal.item && (
+                <div
+                  className="config-modal-backdrop"
+                  onClick={() => setDeleteConfirmModal({ isOpen: false, item: null })}
+                >
+                  <div className="config-modal-card" onClick={(e) => e.stopPropagation()}>
+                    <div className="config-modal-icon-wrap">
+                      <Icon icon="solar:danger-triangle-bold" width="24" />
+                    </div>
+                    <div>
+                      <h3 className="config-modal-title">Revoke Menu Access</h3>
+                      <p className="config-modal-desc">
+                        Are you sure you want to revoke access to{" "}
+                        <strong>{deleteConfirmModal.item.module}</strong>
+                        {deleteConfirmModal.item.subMenu
+                          ? ` (${deleteConfirmModal.item.subMenu})`
+                          : " (Entire Menu)"}{" "}
+                        for <strong>{deleteConfirmModal.item.employeeName}</strong>?
+                      </p>
+                    </div>
+                    <div className="config-modal-actions">
+                      <button
+                        type="button"
+                        className="common-modal-btn btn-small-cancel"
+                        onClick={() => setDeleteConfirmModal({ isOpen: false, item: null })}
+                        disabled={menuAccessSubmitting}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="config-modal-btn-delete"
+                        onClick={handleConfirmDelete}
+                        disabled={menuAccessSubmitting}
+                      >
+                        {menuAccessSubmitting ? "Revoking..." : "Yes, Revoke Access"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

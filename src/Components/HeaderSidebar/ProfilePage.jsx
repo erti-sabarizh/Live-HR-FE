@@ -645,6 +645,7 @@ function ProfilePage({ isOpen, onClose, onLogout }) {
 
   const handleInternalLogout = () => {
     sessionStorage.removeItem("Erti-Portal");
+    sessionStorage.clear();
     navigate("/");
     if (onLogout) onLogout();
   };

@@ -432,7 +432,7 @@ function AttendancePage() {
       toast.error("Permission times must be exactly within office hours (10:00 AM - 6:30 PM)");
       return;
     }
-    const todayStr = new Date().toDateString();
+    const todayStr = moment().format("YYYY-MM-DD");
     const fromDate = `${todayStr}T${formattedFrom}`;
     const toDate = `${todayStr}T${formattedTo}`;
     if (moment(toDate).isSameOrBefore(moment(fromDate))) {
@@ -838,16 +838,15 @@ function AttendancePage() {
                                   <td>{row.logout || "—"}</td>
                                   <td>
                                     <span className={`emp-attendance-figma-status-pill ${
-                                      row.status === "Present" ? "emp-attendance-present"
+                                      (row.status === "Present" || row.status === "Half Day" || row.status === "Half Day Leave" || row.status === "half day leave") ? "emp-attendance-present"
                                         : row.status === "Absent" ? "emp-attendance-absent"
-                                          : (row.status === "Leave" || row.status === "leave" || row.status === "Half Day Leave" || row.status === "half day leave") ? "emp-attendance-approved"
+                                          : (row.status === "Leave" || row.status === "leave") ? "emp-attendance-approved"
                                             : "emp-attendance-neutral"
                                     }`}>
-                                      {row.status === "Present" ? "Present"
-                                        : (row.status === "Half Day" || row.status === "Half Day Leave" || row.status === "half day leave") ? "Half Day Leave"
-                                          : row.status === "Absent" ? "Absent"
-                                            : (row.status === "Leave" || row.status === "leave") ? "Leave"
-                                              : "—"}
+                                      {(row.status === "Present" || row.status === "Half Day" || row.status === "Half Day Leave" || row.status === "half day leave") ? "Present"
+                                        : row.status === "Absent" ? "Absent"
+                                          : (row.status === "Leave" || row.status === "leave") ? "Leave"
+                                            : "—"}
                                     </span>
                                   </td>
                                   <td className="emp-attendance-nowrap">{row.workingHours || "—"}</td>

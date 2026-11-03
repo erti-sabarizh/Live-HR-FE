@@ -100,7 +100,6 @@
 .employee-leave-card {
   background-color: #F6F6F6;
   border-radius: 6px;
-  padding: 14px 16px;
 }
 
 /* Profile row: left profile + right badge */
@@ -218,7 +217,7 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-
+  padding-top: 20px;
 }
 
 /* ===== RESPONSIVE ===== */

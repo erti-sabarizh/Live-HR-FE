@@ -200,7 +200,7 @@ const DailyWorkUpdatePage = () => {
   const handleExport = () => {
     if (updates.length === 0) return toast.info("No data to export");
     try {
-      const headers = ['S.No', 'Date', 'Employee', 'Category', 'Project', 'Pages', 'Type', 'Task Title', 'Phase Title', 'Work Description', 'Status', 'Phase Working Days', 'Working Days'];
+      const headers = ['S.No', 'Date', 'Employee', 'Category', 'Project', 'Pages', 'Type', 'Task Title', 'Phase Title', 'Work Description', 'Status', 'Working Days', 'Overall Task Days'];
       const columnWidths = [40, 90, 150, 120, 140, 140, 140, 200, 160, 350, 90, 120, 140];
 
       const escape = (str) => String(str).replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
@@ -284,7 +284,7 @@ const DailyWorkUpdatePage = () => {
     <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape(isTaskPhase ? (u.title || u.phase || "—") : "—")}</Data></Cell>
     <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape(u.description || u.note || u.phase || "—")}</Data></Cell>
     <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape(u.status || u.phaseStatus || "Pending")}</Data></Cell>
-    <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape(isTaskPhase && u.phaseWorkingDays !== undefined && u.phaseWorkingDays !== null ? String(u.phaseWorkingDays) : "—")}</Data></Cell>
+    <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape((u.workingDays !== undefined && u.workingDays !== null && u.workingDays > 0) ? String(u.workingDays) : (u.phaseWorkingDays ? String(u.phaseWorkingDays) : "1"))}</Data></Cell>
     <Cell ss:StyleID="Cell"><Data ss:Type="String">${escape(u.overallTaskWorkingDays !== undefined && u.overallTaskWorkingDays !== null ? String(u.overallTaskWorkingDays) : "1")}</Data></Cell>
    </Row>`;
       }).join('')}
@@ -610,10 +610,10 @@ const DailyWorkUpdatePage = () => {
                   {u.workType && (
                     <div className="dwu-work-card__field"><span className="dwu-work-card__label">Type</span><span className="dwu-work-card__value" style={{ color: "#5977f8", fontWeight: 600 }}>{formatWorkType(u.workType)}</span></div>
                   )}
-                  {/* {isTaskPhase && (
-                    <div className="dwu-work-card__field"><span className="dwu-work-card__label">Phase Days</span><span className="dwu-work-card__value" style={{ color: "#16a34a", fontWeight: 600 }}>{u.phaseWorkingDays !== undefined && u.phaseWorkingDays !== null ? `${u.phaseWorkingDays} ${u.phaseWorkingDays === 1 ? 'day' : 'days'}` : "—"}</span></div>
-                  )} */}
-                  <div className="dwu-work-card__field"><span className="dwu-work-card__label">Working Days</span><span className="dwu-work-card__value" style={{ color: "#2563eb", fontWeight: 600 }}>{u.overallTaskWorkingDays !== undefined && u.overallTaskWorkingDays !== null ? `${u.overallTaskWorkingDays} ${u.overallTaskWorkingDays === 1 ? 'day' : 'days'}` : "1 day"}</span></div>
+                  <div className="dwu-work-card__field"><span className="dwu-work-card__label">Working Days</span><span className="dwu-work-card__value" style={{ color: "#2563eb", fontWeight: 600 }}>{(u.workingDays !== undefined && u.workingDays !== null && u.workingDays > 0) ? `${u.workingDays} ${u.workingDays === 1 ? 'day' : 'days'}` : (u.phaseWorkingDays !== undefined && u.phaseWorkingDays !== null && u.phaseWorkingDays > 0 ? `${u.phaseWorkingDays} ${u.phaseWorkingDays === 1 ? 'day' : 'days'}` : "1 day")}</span></div>
+                  {isTaskPhase && u.overallTaskWorkingDays !== undefined && u.overallTaskWorkingDays !== null && (
+                    <div className="dwu-work-card__field"><span className="dwu-work-card__label">Overall Days</span><span className="dwu-work-card__value" style={{ color: "#059669", fontWeight: 600 }}>{`${u.overallTaskWorkingDays} ${u.overallTaskWorkingDays === 1 ? 'day' : 'days'}`}</span></div>
+                  )}
                   {/* Status hidden here on mobile as requested */}
                 </div>
                 <div className="dwu-work-card__section">
@@ -867,10 +867,10 @@ const DailyWorkUpdatePage = () => {
                             <div className="dwu-work-card__field"><span className="dwu-work-card__label">Type</span><span className="dwu-work-card__value" style={{ color: "#5977f8", fontWeight: 600 }}>{formatWorkType(u.workType)}</span></div>
                           )}
                           <div className="dwu-work-card__field"><span className="dwu-work-card__label">Status</span><span className={`dwu-admin__statusBadge dwu-admin__statusBadge--${(u.status || u.phaseStatus || "pending").toLowerCase()}`}>{u.status || u.phaseStatus || "Pending"}</span></div>
-                          {/* {isTaskPhase && (
-                            <div className="dwu-work-card__field"><span className="dwu-work-card__label">Phase Days</span><span className="dwu-work-card__value" style={{ color: "#16a34a", fontWeight: 600 }}>{u.phaseWorkingDays !== undefined && u.phaseWorkingDays !== null ? `${u.phaseWorkingDays} ${u.phaseWorkingDays === 1 ? 'day' : 'days'}` : "—"}</span></div>
-                          )} */}
-                          <div className="dwu-work-card__field"><span className="dwu-work-card__label">Working Days</span><span className="dwu-work-card__value" style={{ color: "#2563eb", fontWeight: 600 }}>{u.overallTaskWorkingDays !== undefined && u.overallTaskWorkingDays !== null ? `${u.overallTaskWorkingDays} ${u.overallTaskWorkingDays === 1 ? 'day' : 'days'}` : "1 day"}</span></div>
+                          <div className="dwu-work-card__field"><span className="dwu-work-card__label">Working Days</span><span className="dwu-work-card__value" style={{ color: "#2563eb", fontWeight: 600 }}>{(u.workingDays !== undefined && u.workingDays !== null && u.workingDays > 0) ? `${u.workingDays} ${u.workingDays === 1 ? 'day' : 'days'}` : (u.phaseWorkingDays !== undefined && u.phaseWorkingDays !== null && u.phaseWorkingDays > 0 ? `${u.phaseWorkingDays} ${u.phaseWorkingDays === 1 ? 'day' : 'days'}` : "1 day")}</span></div>
+                          {isTaskPhase && u.overallTaskWorkingDays !== undefined && u.overallTaskWorkingDays !== null && (
+                            <div className="dwu-work-card__field"><span className="dwu-work-card__label">Overall Days</span><span className="dwu-work-card__value" style={{ color: "#059669", fontWeight: 600 }}>{`${u.overallTaskWorkingDays} ${u.overallTaskWorkingDays === 1 ? 'day' : 'days'}`}</span></div>
+                          )}
                         </div>
                         <div className="dwu-work-card__section">
                           <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">

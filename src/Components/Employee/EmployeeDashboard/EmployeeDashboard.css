@@ -1152,6 +1152,7 @@
   flex-direction: column;
   max-height: calc(100vh - 80px);
   overflow: hidden;
+  height: 100%;
 }
 
 .empdb-popup-container .assign-task-container {
@@ -1173,6 +1174,117 @@
   overflow-y: auto;
   overflow-x: hidden;
   background-color: #F6F6F6;
+  min-height: 0;
+}
+
+.empdb-popup-container .task-form {
+  height: auto !important;
+  overflow: visible !important;
+  flex: 1;
+}
+
+.empdb-popup-container .form-row {
+  display: flex;
+  align-items: stretch !important;
+  gap: 16px;
+  width: 100%;
+}
+
+.empdb-popup-container .form-row .form-group {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.empdb-popup-container .atMeta__customDrop,
+.empdb-popup-container .custom-dropdown-trigger,
+.empdb-popup-container .assign-date-wrapper {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.empdb-popup-container .assign-date-wrapper input.custom-date {
+  width: 100% !important;
+}
+
+@media screen and (max-width: 991.98px) {
+  .empdb-popup-overlay {
+    padding: 16px;
+  }
+
+  .empdb-popup-container {
+    max-height: calc(100vh - 40px);
+  }
+
+  .empdb-popup-container .task-body {
+    flex-direction: column !important;
+  }
+
+  .empdb-popup-container .members-panel,
+  .empdb-popup-container .hrms-common-label {
+    width: 100% !important;
+    min-width: unset !important;
+    border-right: none !important;
+    border-bottom: 1px solid #eef0f6 !important;
+    max-height: 220px !important;
+    padding: 12px 14px !important;
+  }
+
+  .empdb-popup-container .form-row {
+    flex-direction: column !important;
+    gap: 14px !important;
+    align-items: stretch !important;
+  }
+
+  .empdb-popup-container .form-row .form-group {
+    width: 100% !important;
+    flex: none !important;
+  }
+}
+
+@media screen and (max-width: 576px) {
+  .empdb-popup-overlay {
+    padding: 10px;
+  }
+
+  .empdb-popup-container {
+    width: 96% !important;
+    max-height: calc(100vh - 20px);
+    border-radius: 12px;
+  }
+
+  .empdb-popup-container .task-body {
+    padding: 12px 14px !important;
+  }
+
+  .empdb-popup-container .at-work-type-group {
+    margin-top: 14px !important;
+    margin-bottom: 8px !important;
+  }
+}
+
+@media screen and (min-width: 810px) {
+  .empdb-popup-container .at-cat-proj-row,
+  .empdb-popup-container .form-row:has(+ .at-work-type-group) {
+    margin-bottom: 10px !important;
+  }
+  .empdb-popup-container .at-cat-proj-row .form-group,
+  .empdb-popup-container .form-row:has(+ .at-work-type-group) .form-group {
+    margin-bottom: 0 !important;
+  }
+  .empdb-popup-container .at-work-type-group {
+    margin-top: 0 !important;
+    margin-bottom: 8px !important;
+  }
+
+  .empdb-popup-container .at-pages-radio-group {
+    margin-top: 4px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .empdb-popup-container .at-pages-select-group {
+    margin-top: 4px !important;
+    margin-bottom: 12px !important;
+  }
 }
 
 /* ==========================================================================
@@ -3497,28 +3609,33 @@
   justify-content: center;
   border-radius: 4px;
   font-weight: 500;
+
   white-space: nowrap;
 }
 
 .project-status-badge.status-completed,
 .project-status-badge.status-complete {
   background-color: #dcfce7;
+    border-radius: 5px;
   color: #16a34a;
 }
 
 .project-status-badge.status-pending {
   background-color: #f3f4f6;
+    border-radius: 5px;
   color: #6b7280;
 }
 
 .project-status-badge.status-in-process,
 .project-status-badge.status-inprocess {
   background-color: #ede9fe;
+    border-radius: 5px;
   color: #7c3aed;
 }
 
 .project-status-badge.status-hold {
   background-color: #fef3c7;
+    border-radius: 5px;
   color: #d97706;
 }
 
@@ -3894,26 +4011,31 @@
 .project-status-badge.status-in-process {
   background: #dbeafe;
   color: #1d4ed8;
+    border-radius: 5px;
 }
 
 .project-status-badge.status-completed {
   background: #dcfce7;
   color: #15803d;
+    border-radius: 5px;
 }
 
 .project-status-badge.status-pending {
   background: #fef9c3;
   color: #a16207;
+    border-radius: 5px;
 }
 
 .project-status-badge.status-on-hold {
   background: #fee2e2;
   color: #dc2626;
+    border-radius: 5px;
 }
 
 .project-status-badge.status- {
   background: #f1f5f9;
   color: #64748b;
+    border-radius: 5px;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -4296,7 +4418,7 @@
   .project-details-modal-header {
     flex-wrap: wrap !important;
     gap: 12px !important;
-    padding: 14px 18px !important;
+    /* padding: 14px 18px !important; */
   }
 
   .project-details-modal-header-content {
@@ -5224,5 +5346,141 @@
   .dash-pc-rows-grid {
     grid-template-columns: 1fr;
     max-height: 320px;
+  }
+}
+
+/* ==========================================================================
+   Morning INFORM Half-Day Confirmation Modal
+   ========================================================================== */
+
+.morning-halfday-confirm-modal .modal-content {
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+  padding: 15px !important;
+}
+
+.morning-halfday-confirm-modal .modal-header {
+  padding: 0 !important;
+  border: none !important;
+}
+
+.morning-halfday-confirm-modal .modal-body {
+  padding: 0 !important;
+}
+
+.morning-halfday-modal-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.morning-halfday-modal-content {
+  margin-top: 10px;
+  margin-bottom: 15px;
+}
+
+.morning-halfday-modal-message {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #334155;
+  margin: 0;
+}
+
+.morning-halfday-modal-footer {
+  gap: 10px;
+}
+
+.morning-halfday-confirm-modal .btn-small-cancel {
+  background: #A6A6A6 !important;
+  background-color: #A6A6A6 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 8px 20px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  min-width: 100px !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.morning-halfday-confirm-modal .btn-small-cancel:hover {
+  background: #919191 !important;
+  background-color: #919191 !important;
+}
+
+.morning-halfday-confirm-modal .btn-confirm-success {
+  background: #22c55e !important;
+  background-color: #22c55e !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 8px 20px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  min-width: 140px !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.morning-halfday-confirm-modal .btn-confirm-success:hover {
+  background: #16a34a !important;
+  background-color: #16a34a !important;
+}
+
+/* ==========================================================================
+   WORK DETAILS MODAL: MULTIPLE UPDATES STATUS HISTORY MOBILE RESPONSIVE
+   ========================================================================== */
+@media (max-width: 576px) {
+  .dwu-status-history-table thead {
+    display: none !important;
+  }
+
+  .dwu-status-history-table,
+  .dwu-status-history-table tbody {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .dwu-status-history-table tr.dwu-history-tr {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    padding: 10px 12px !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .dwu-status-history-table tr.dwu-history-tr:last-child {
+    border-bottom: none !important;
+  }
+
+  .dwu-status-history-table td.dwu-history-td-date {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 0 !important;
+    margin-right: 12px !important;
+    width: auto !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: #475569 !important;
+  }
+
+  .dwu-status-history-table td.dwu-history-td-status {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 0 !important;
+    width: auto !important;
+  }
+
+  .dwu-status-history-table td.dwu-history-td-summary {
+    display: block !important;
+    width: 100% !important;
+    padding: 8px 0 0 0 !important;
+    margin-top: 2px !important;
+    box-sizing: border-box !important;
   }
 }

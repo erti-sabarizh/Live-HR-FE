@@ -90,9 +90,34 @@ export const isAdminUser = (user) => {
   return role === "admin" || role === "superadmin";
 };
 
+// Helper to safely get user permissions from user object or sessionStorage
+const getUserPermissions = (user) => {
+  let currentUser = user;
+  if (!currentUser) {
+    try {
+      const raw = sessionStorage.getItem("Erti-Portal");
+      if (raw) currentUser = JSON.parse(raw);
+    } catch (_) {}
+  }
+  return currentUser?.permissions || [];
+};
+
 // ── Employee Management Checks ──
 export const canHrAddEmployee = (user, config = null) => {
   if (isAdminUser(user)) return true;
+  const userPerms = getUserPermissions(user);
+  if (Array.isArray(userPerms) && userPerms.length > 0) {
+    const clean = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const perm = userPerms.find((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const mod = clean(p.module);
+      const sub = clean(p.subMenu);
+      return mod.includes("employee") && (!sub || sub === "" || sub.includes("entiremenu") || sub.includes("add"));
+    });
+    if (perm) {
+      return ["WRITE", "BOTH", "FULL_ACCESS"].includes(perm.permission);
+    }
+  }
   if (!isHrUser(user)) return false;
   const cfg = config || getCachedHrAccessConfig();
   return cfg?.employeeManagement?.canAdd !== false;
@@ -100,6 +125,16 @@ export const canHrAddEmployee = (user, config = null) => {
 
 export const canHrViewEmployee = (user, config = null) => {
   if (isAdminUser(user)) return true;
+  const userPerms = getUserPermissions(user);
+  if (Array.isArray(userPerms) && userPerms.length > 0) {
+    const clean = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const perm = userPerms.find((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const mod = clean(p.module);
+      return mod.includes("employee");
+    });
+    if (perm) return true;
+  }
   if (!isHrUser(user)) return false;
   const cfg = config || getCachedHrAccessConfig();
   return cfg?.employeeManagement?.canView !== false;
@@ -107,6 +142,19 @@ export const canHrViewEmployee = (user, config = null) => {
 
 export const canHrEditEmployee = (user, config = null) => {
   if (isAdminUser(user)) return true;
+  const userPerms = getUserPermissions(user);
+  if (Array.isArray(userPerms) && userPerms.length > 0) {
+    const clean = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const perm = userPerms.find((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const mod = clean(p.module);
+      const sub = clean(p.subMenu);
+      return mod.includes("employee") && (!sub || sub === "" || sub.includes("entiremenu") || sub.includes("manage"));
+    });
+    if (perm) {
+      return ["WRITE", "BOTH", "FULL_ACCESS"].includes(perm.permission);
+    }
+  }
   if (!isHrUser(user)) return false;
   const cfg = config || getCachedHrAccessConfig();
   return cfg?.employeeManagement?.canEdit !== false;
@@ -122,6 +170,17 @@ export const canHrDeleteDocuments = (user, config = null) => {
 // ── Attendance Management Checks ──
 export const canHrDailyAttendance = (user, config = null) => {
   if (isAdminUser(user)) return true;
+  const userPerms = getUserPermissions(user);
+  if (Array.isArray(userPerms) && userPerms.length > 0) {
+    const clean = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const perm = userPerms.find((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const mod = clean(p.module);
+      const sub = clean(p.subMenu);
+      return mod.includes("attendance") && (!sub || sub === "" || sub.includes("entiremenu") || sub.includes("daily"));
+    });
+    if (perm) return true;
+  }
   if (!isHrUser(user)) return false;
   const cfg = config || getCachedHrAccessConfig();
   return cfg?.attendanceManagement?.dailyReport !== false;
@@ -129,6 +188,17 @@ export const canHrDailyAttendance = (user, config = null) => {
 
 export const canHrMonthlyAttendance = (user, config = null) => {
   if (isAdminUser(user)) return true;
+  const userPerms = getUserPermissions(user);
+  if (Array.isArray(userPerms) && userPerms.length > 0) {
+    const clean = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const perm = userPerms.find((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const mod = clean(p.module);
+      const sub = clean(p.subMenu);
+      return mod.includes("attendance") && (!sub || sub === "" || sub.includes("entiremenu") || sub.includes("report") || sub.includes("overview"));
+    });
+    if (perm) return true;
+  }
   if (!isHrUser(user)) return false;
   const cfg = config || getCachedHrAccessConfig();
   return cfg?.attendanceManagement?.monthlyOverview !== false;
@@ -136,6 +206,16 @@ export const canHrMonthlyAttendance = (user, config = null) => {
 
 export const canHrExportAttendance = (user, config = null) => {
   if (isAdminUser(user)) return true;
+  const userPerms = getUserPermissions(user);
+  if (Array.isArray(userPerms) && userPerms.length > 0) {
+    const clean = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const perm = userPerms.find((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const mod = clean(p.module);
+      return mod.includes("attendance") && ["WRITE", "BOTH", "FULL_ACCESS"].includes(p.permission);
+    });
+    if (perm) return true;
+  }
   if (!isHrUser(user)) return false;
   const cfg = config || getCachedHrAccessConfig();
   return cfg?.attendanceManagement?.exportAttendance !== false;
@@ -144,25 +224,96 @@ export const canHrExportAttendance = (user, config = null) => {
 // ── Slips & Letters Checks ──
 export const getHrSlipAccess = (user, config = null) => {
   if (isAdminUser(user)) return "FULL_ACCESS";
-  if (!isHrUser(user)) return "NO_ACCESS";
+
+  let currentUser = user;
+  if (!currentUser) {
+    try {
+      const raw = sessionStorage.getItem("Erti-Portal");
+      if (raw) currentUser = JSON.parse(raw);
+    } catch (_) {}
+  }
+
+  // Check if employee has menu permission granted for Slip Generation / Payslip
+  const userPerms = currentUser?.permissions || [];
+  if (Array.isArray(userPerms) && userPerms.length > 0) {
+    const clean = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const perm = userPerms.find((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const mod = clean(p.module);
+      const sub = clean(p.subMenu);
+      const matchMod = mod.includes("slip") || mod.includes("salary");
+      if (!matchMod) return false;
+      if (!sub || sub === "" || sub.includes("entiremenu") || sub.includes("payslip") || sub.includes("salary")) {
+        return true;
+      }
+      return false;
+    });
+
+    if (perm) {
+      if (["WRITE", "BOTH", "FULL_ACCESS"].includes(perm.permission)) return "WRITE";
+      if (perm.permission === "READ") return "READ";
+    }
+  }
+
+  if (!isHrUser(currentUser)) return "NO_ACCESS";
   const cfg = config || getCachedHrAccessConfig();
   return cfg?.slipAndLetter || "WRITE";
 };
 
 export const canHrGenerateSlips = (user, config = null) => {
+  if (isAdminUser(user)) return true;
   const access = getHrSlipAccess(user, config);
   return ["WRITE", "FULL_ACCESS"].includes(access);
 };
 
 export const canHrDeleteSlips = (user, config = null) => {
+  if (isAdminUser(user)) return true;
   const access = getHrSlipAccess(user, config);
-  return access === "FULL_ACCESS";
+
+  let currentUser = user;
+  if (!currentUser) {
+    try {
+      const raw = sessionStorage.getItem("Erti-Portal");
+      if (raw) currentUser = JSON.parse(raw);
+    } catch (_) {}
+  }
+
+  // If user is designated HR, respect HR config (FULL_ACCESS needed to delete)
+  if (isHrUser(currentUser)) {
+    return access === "FULL_ACCESS";
+  }
+
+  // If employee granted WRITE menu permission by Admin, allow slip management/deletion
+  return ["WRITE", "BOTH", "FULL_ACCESS"].includes(access);
 };
 
 // ── HR Requests Checks ──
 export const getHrRequestsAccess = (user, config = null) => {
   if (isAdminUser(user)) return "FULL_ACCESS";
-  if (!isHrUser(user)) return "NO_ACCESS";
+
+  let currentUser = user;
+  if (!currentUser) {
+    try {
+      const raw = sessionStorage.getItem("Erti-Portal");
+      if (raw) currentUser = JSON.parse(raw);
+    } catch (_) {}
+  }
+
+  const userPerms = currentUser?.permissions || [];
+  if (Array.isArray(userPerms) && userPerms.length > 0) {
+    const clean = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const perm = userPerms.find((p) => {
+      if (!p || p.permission === "NO_ACCESS") return false;
+      const mod = clean(p.module);
+      return mod.includes("hrrequest") || mod.includes("request");
+    });
+    if (perm) {
+      if (["WRITE", "BOTH", "FULL_ACCESS"].includes(perm.permission)) return "WRITE";
+      if (perm.permission === "READ") return "READ";
+    }
+  }
+
+  if (!isHrUser(currentUser)) return "NO_ACCESS";
   const cfg = config || getCachedHrAccessConfig();
   return cfg?.hrRequests || "WRITE";
 };

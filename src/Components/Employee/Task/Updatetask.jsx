@@ -1151,7 +1151,7 @@ function UpdateTask({ taskId, onClose, onSuccess }) {
               </FieldWrapper>
 
               {/* Spacer container to align columns with the 3-column row above */}
-              <div className="form-group" style={{ flex: 1 }}></div>
+              <div className="form-group update-task-spacer-col" style={{ flex: 1 }}></div>
             </div>
 
 

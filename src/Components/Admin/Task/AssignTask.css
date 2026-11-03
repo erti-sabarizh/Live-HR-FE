@@ -2048,15 +2048,83 @@
 }
 
 /* ── EMPLOYEE ASSIGN TASK SPECIFIC STYLE OVERRIDES ── */
-.employee-assign-task-page .assign-date-wrapper {
-  position: relative;
-  width: 120px;
+.employee-assign-task-page .form-row {
+  display: flex;
+  gap: 16px;
+  align-items: stretch !important;
+  width: 100%;
 }
 
-@media screen and (max-width: 600px) {
-  .employee-assign-task-page .assign-date-wrapper {
+.employee-assign-task-page .form-row .form-group {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.employee-assign-task-page .form-row .form-group .atMeta__customDrop,
+.employee-assign-task-page .form-row .form-group .custom-dropdown-trigger {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.employee-assign-task-page .assign-date-wrapper {
+  position: relative;
+  width: 100% !important;
+}
+
+.employee-assign-task-page .assign-date-wrapper input.custom-date {
+  width: 100% !important;
+}
+
+@media screen and (max-width: 991.98px) {
+  .employee-assign-task-page .form-row {
+    flex-direction: column !important;
+    gap: 14px !important;
+    align-items: stretch !important;
     width: 100% !important;
   }
+
+  .employee-assign-task-page .form-row .form-group {
+    width: 100% !important;
+    flex: none !important;
+  }
+}
+
+@media screen and (max-width: 809.98px) {
+  .at-cat-proj-row {
+    margin-bottom: 0 !important;
+  }
+  .at-cat-proj-row .form-group {
+    margin-bottom: 0 !important;
+  }
+  .at-work-type-group {
+    margin-top: 14px !important;
+    margin-bottom: 8px !important;
+  }
+}
+
+@media screen and (min-width: 810px) {
+  .at-cat-proj-row,
+  .form-row:has(+ .at-work-type-group) {
+    margin-bottom: 10px !important;
+  }
+  .at-cat-proj-row .form-group,
+  .form-row:has(+ .at-work-type-group) .form-group {
+    margin-bottom: 0 !important;
+  }
+  .at-work-type-group {
+    margin-top: 0 !important;
+    margin-bottom: 8px !important;
+  }
+}
+
+.at-pages-radio-group {
+  margin-top: 4px !important;
+  margin-bottom: 4px !important;
+}
+
+.at-pages-select-group {
+  margin-top: 4px !important;
+  margin-bottom: 12px !important;
 }
 
 .employee-assign-task-page .atPhase__header label {

@@ -143,6 +143,9 @@ function Login() {
         setUser(userData); // Update context immediately
 
         sessionStorage.setItem("loginTime", new Date().toISOString());
+        sessionStorage.removeItem("birthdayAnimationShown");
+        sessionStorage.removeItem("birthday_anim_played_session");
+        sessionStorage.removeItem("birthday_animation_played_session");
 
         if (response.data.passwordExpiringSoon) {
           const expiresAt = response.data.passwordExpiresAt;

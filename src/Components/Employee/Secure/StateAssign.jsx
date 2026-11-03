@@ -22,6 +22,15 @@ const REQUEST_TYPE_FIELDS = {
 };
 
 void 0; // line removed
+const formatFileSize = (bytes) => {
+  if (!bytes || isNaN(bytes) || Number(bytes) <= 0) return "";
+  const num = Number(bytes);
+  if (num < 1024) return `${num} B`;
+  if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+  if (num < 1024 * 1024 * 1024) return `${(num / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(num / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
+
 function StateAssign({ onClose, editData }) {
   const [employees, setEmployees] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -785,6 +794,11 @@ function StateAssign({ onClose, editData }) {
                         <span style={{ fontSize: "12px", color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "150px" }} title={file.originalName}>
                           {file.originalName}
                         </span>
+                        {(file.size || file.fileSize) && (
+                          <span style={{ fontSize: "10px", color: "#64748b" }}>
+                            ({formatFileSize(file.size || file.fileSize)})
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => setExistingFiles(existingFiles.filter((_, i) => i !== idx))}
@@ -805,6 +819,11 @@ function StateAssign({ onClose, editData }) {
                         <span style={{ fontSize: "12px", color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "150px" }}>
                           {file.name}
                         </span>
+                        {file.size && (
+                          <span style={{ fontSize: "10px", color: "#64748b" }}>
+                            ({formatFileSize(file.size)})
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => setFiles(files.filter((_, i) => i !== idx))}

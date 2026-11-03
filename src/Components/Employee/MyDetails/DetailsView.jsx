@@ -164,6 +164,7 @@ const DetailsView = () => {
   const [requestLoading, setRequestLoading] = useState(false);
   const [requestStatus, setRequestStatus] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
+  const [editRejectionReason, setEditRejectionReason] = useState("");
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [canEditProfile, setCanEditProfile] = useState(false);
   const [allowedFields, setAllowedFields] = useState([]);
@@ -498,7 +499,7 @@ const DetailsView = () => {
         const cType = course.courseType || "College";
         const cName = course.courseName ? ` - ${course.courseName}` : (course.collegeName ? ` (${course.collegeName})` : "");
         list.push({
-          id: `course_${idx}`,
+          id: `course_${course._id || course.id || idx}`,
           label: `${cType} Certificate${cName}`,
           field: `courses.${idx}.certificate`,
           key: course.certificate || null,
@@ -511,8 +512,14 @@ const DetailsView = () => {
       });
     }
 
-    // Degree Certificate fallback if present outside courses array
-    if (employee.degreeCertificate || employee.degreeCertificateUrl) {
+    // Degree Certificate fallback if present outside courses array and not already included in courses
+    const existingCertKeys = new Set(
+      list.filter((d) => d.key || d.url).map((d) => d.key || d.url)
+    );
+    if (
+      (employee.degreeCertificate || employee.degreeCertificateUrl) &&
+      !existingCertKeys.has(employee.degreeCertificate || employee.degreeCertificateUrl)
+    ) {
       list.push({
         id: "degreeCertificate",
         label: "Degree Certificate",
@@ -523,7 +530,10 @@ const DetailsView = () => {
         iconType: "college",
       });
     }
-    if (employee.ugDegreeCertificate || employee.ugDegreeCertificateUrl) {
+    if (
+      (employee.ugDegreeCertificate || employee.ugDegreeCertificateUrl) &&
+      !existingCertKeys.has(employee.ugDegreeCertificate || employee.ugDegreeCertificateUrl)
+    ) {
       list.push({
         id: "ugDegreeCertificate",
         label: "UG Degree Certificate",
@@ -534,7 +544,10 @@ const DetailsView = () => {
         iconType: "college",
       });
     }
-    if (employee.pgDegreeCertificate || employee.pgDegreeCertificateUrl) {
+    if (
+      (employee.pgDegreeCertificate || employee.pgDegreeCertificateUrl) &&
+      !existingCertKeys.has(employee.pgDegreeCertificate || employee.pgDegreeCertificateUrl)
+    ) {
       list.push({
         id: "pgDegreeCertificate",
         label: "PG Degree Certificate",
@@ -610,15 +623,18 @@ const DetailsView = () => {
 
   const currentDocIndex = useMemo(() => {
     if (!viewerDoc) return -1;
-    const idx = viewableDocuments.findIndex(
-      (d) =>
-        d.id === viewerDoc.id ||
-        (d.key && viewerDoc.key && d.key === viewerDoc.key) ||
-        (d.field && viewerDoc.field && d.field === viewerDoc.field)
-    );
-    if (idx !== -1) return idx;
+    if (
+      typeof viewerDoc.docIndex === "number" &&
+      viewerDoc.docIndex >= 0 &&
+      viewerDoc.docIndex < viewableDocuments.length &&
+      viewableDocuments[viewerDoc.docIndex]?.id === viewerDoc.id
+    ) {
+      return viewerDoc.docIndex;
+    }
+    const idxById = viewableDocuments.findIndex((d) => d.id === viewerDoc.id);
+    if (idxById !== -1) return idxById;
     return viewableDocuments.findIndex(
-      (d) => d.label === viewerDoc.label || (d.url && viewerDoc.url && d.url === viewerDoc.url)
+      (d) => d.field && viewerDoc.field && d.field === viewerDoc.field
     );
   }, [viewerDoc, viewableDocuments]);
 
@@ -778,6 +794,7 @@ const DetailsView = () => {
         allowedFields = [],
         hasPendingRequest,
         wasRejected,
+        rejectionReason: rejReason,
         message,
       } = res.data;
 
@@ -793,6 +810,7 @@ const DetailsView = () => {
       if (canEdit && message === "First-time profile setup") {
         setRequestStatus(null);
         setStatusMessage("");
+        setEditRejectionReason("");
         return;
       }
 
@@ -800,6 +818,7 @@ const DetailsView = () => {
       if (canEdit) {
         setRequestStatus("approved");
         setStatusMessage(message);
+        setEditRejectionReason("");
 
         // show toast only when it becomes approved newly
         if (!prevCanEdit) {
@@ -813,6 +832,7 @@ const DetailsView = () => {
       if (hasPendingRequest) {
         setRequestStatus("pending");
         setStatusMessage(message || "Request pending");
+        setEditRejectionReason("");
         return;
       }
 
@@ -821,6 +841,7 @@ const DetailsView = () => {
       if (message === "Request already used") {
         setRequestStatus(null);
         setStatusMessage("");
+        setEditRejectionReason("");
         setShowStatusModal(false);
         return;
       }
@@ -829,6 +850,7 @@ const DetailsView = () => {
       if (wasRejected) {
         setRequestStatus("rejected");
         setStatusMessage(message || "Request rejected");
+        setEditRejectionReason(rejReason || "");
 
         if (!showStatusModal) {
           setShowStatusModal(true);
@@ -839,6 +861,7 @@ const DetailsView = () => {
       // ✅ DEFAULT → LOCKED
       setRequestStatus(null);
       setStatusMessage("");
+      setEditRejectionReason("");
 
     } catch (err) {
       console.error("Check edit permission error:", err);
@@ -1327,11 +1350,16 @@ const DetailsView = () => {
   };
 
   // ── Handle Document View with 2-Minute Expiry In-Page Viewer ──
-  const handleViewDocument = async (doc) => {
+  const handleViewDocument = async (doc, targetIndex = null) => {
     if (!doc || !doc.isUploaded) return;
 
     try {
       setDocLoadingId(doc.id);
+
+      const resolvedIndex =
+        typeof targetIndex === "number" && targetIndex >= 0
+          ? targetIndex
+          : viewableDocuments.findIndex((d) => d.id === doc.id);
 
       const payload = {
         key: doc.key || undefined,
@@ -1349,6 +1377,7 @@ const DetailsView = () => {
           key: doc.key,
           field: doc.field,
           url: targetUrl,
+          docIndex: resolvedIndex >= 0 ? resolvedIndex : 0,
         });
         // Only start timer when viewer is initially opened; keep timer continuous when navigating between documents
         if (!viewerDoc) {
@@ -1360,6 +1389,10 @@ const DetailsView = () => {
       }
     } catch (err) {
       console.error("Error viewing document:", err);
+      const resolvedIndex =
+        typeof targetIndex === "number" && targetIndex >= 0
+          ? targetIndex
+          : viewableDocuments.findIndex((d) => d.id === doc.id);
       if (doc.url) {
         setViewerDoc({
           id: doc.id,
@@ -1367,6 +1400,7 @@ const DetailsView = () => {
           key: doc.key,
           field: doc.field,
           url: doc.url,
+          docIndex: resolvedIndex >= 0 ? resolvedIndex : 0,
         });
         if (!viewerDoc) {
           setViewerTimer(120);
@@ -1384,16 +1418,22 @@ const DetailsView = () => {
   const handleNextDocument = () => {
     if (docLoadingId) return;
     if (currentDocIndex >= 0 && currentDocIndex < viewableDocuments.length - 1) {
-      const nextDoc = viewableDocuments[currentDocIndex + 1];
-      handleViewDocument(nextDoc);
+      const nextIndex = currentDocIndex + 1;
+      const nextDoc = viewableDocuments[nextIndex];
+      if (nextDoc) {
+        handleViewDocument(nextDoc, nextIndex);
+      }
     }
   };
 
   const handlePrevDocument = () => {
     if (docLoadingId) return;
     if (currentDocIndex > 0) {
-      const prevDoc = viewableDocuments[currentDocIndex - 1];
-      handleViewDocument(prevDoc);
+      const prevIndex = currentDocIndex - 1;
+      const prevDoc = viewableDocuments[prevIndex];
+      if (prevDoc) {
+        handleViewDocument(prevDoc, prevIndex);
+      }
     }
   };
 
@@ -1765,11 +1805,15 @@ const DetailsView = () => {
                   Please update or re-upload only the required document/field and resubmit your profile for Admin review.
                 </p>
               </div>
-              <div className="employee-review-alert-action p-3 d-flex align-items-center">
+              <div
+                className="employee-review-alert-action p-3 d-flex align-items-end justify-content-end"
+                style={{ alignSelf: "flex-end" }}
+              >
                 <Button
                   variant="danger"
-                  className="btn-employee-resubmit-cta"
+                  className="common-modal-btn btn-reject"
                   onClick={() => navigate("/emp/my-details/edit")}
+                  style={{ whiteSpace: "nowrap" }}
                 >
                   Update & Resubmit Profile
                 </Button>
@@ -2566,7 +2610,9 @@ const DetailsView = () => {
               disabled={isEmployeeView && requestStatus === "pending"}
               className={`common-modal-btn ${isEmployeeView && requestStatus === "pending"
                 ? "btn-disabled"
-                : "btn-update"
+                : isEmployeeView && employee?.profileApprovalStatus === "rejected"
+                  ? "btn-reject"
+                  : "btn-update"
                 }`}
             >
               {isEmployeeView && requestStatus === "pending" ? (
@@ -2617,7 +2663,7 @@ const DetailsView = () => {
               request will be reviewed by admin.
             </p>
 
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-2">
               <Form.Label>
                 <div className="edit-title">Select sections to edit</div>
               </Form.Label>
@@ -2670,11 +2716,11 @@ const DetailsView = () => {
             {requestedFields.length > 0 && (
               <div
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: "8px",
+                  padding: "5px 10px",
+                  borderRadius: "6px",
                   background: "#f0fdf4",
                   border: "1px solid #bbf7d0",
-                  marginBottom: "14px",
+                  marginBottom: "8px",
                   fontSize: "12px",
                   color: "#166534",
                 }}
@@ -2689,7 +2735,7 @@ const DetailsView = () => {
               </Form.Label>
               <Form.Control
                 as="textarea"
-                rows={4}
+                rows={2}
                 placeholder="e.g., Need to update phone number, upload new Aadhaar card and add degree certificate..."
                 value={requestMessage}
                 onChange={(e) => setRequestMessage(e.target.value)}
@@ -2768,6 +2814,14 @@ const DetailsView = () => {
                 </div>
                 <h4 className="mt-4 mb-3">Request Rejected</h4>
                 <p className="text-muted">{statusMessage}</p>
+                {editRejectionReason && (
+                  <div className="p-3 my-3 rounded bg-light border text-start" style={{ borderColor: "#fee2e2" }}>
+                    <strong className="text-secondary small d-block mb-1">Reason from Admin:</strong>
+                    <div className="text-danger fw-semibold" style={{ fontSize: "14px", whiteSpace: "pre-wrap" }}>
+                      {editRejectionReason}
+                    </div>
+                  </div>
+                )}
                 <div className="d-flex justify-content-end mt-4">
                   <button
                     type="button"
@@ -3077,7 +3131,7 @@ const DetailsView = () => {
 
                 <div className="doc-viewer-sidebar-list">
                   {viewableDocuments.map((doc, idx) => {
-                    const isActive = idx === currentDocIndex || doc.id === viewerDoc.id;
+                    const isActive = idx === currentDocIndex;
                     const docRejected = isDocRejected(doc);
                     const docApproved = isDocApproved(doc);
 
@@ -3087,7 +3141,7 @@ const DetailsView = () => {
                         className={`doc-viewer-sidebar-item ${isActive ? "active" : ""} ${docRejected ? "is-rejected" : ""} ${docApproved ? "is-approved" : ""}`}
                         onClick={() => {
                           if (!isActive && !docLoadingId) {
-                            handleViewDocument(doc);
+                            handleViewDocument(doc, idx);
                           }
                         }}
                         title={doc.label}

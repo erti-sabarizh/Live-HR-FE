@@ -98,34 +98,72 @@ const formatStatusLabel = (s) => {
 const groupTasksWithHistory = (items) => {
   if (!Array.isArray(items) || items.length === 0) return [];
 
-  const groups = new Map();
-
-  items.forEach((item) => {
-    const rawTitle = (item.taskTitle || item.displayTitle || item.name || item.title || item.phase || "").trim();
-    const titleKey = rawTitle.toLowerCase();
-    const refKey = item.referenceId ? String(item.referenceId) : null;
-    const taskIdKey = (item.task_id && item.task_id !== "standalone")
-      ? String(item.task_id)
-      : (item.task?._id ? String(item.task._id) : null);
-
-    let groupKey = titleKey;
-    if (!groupKey && refKey) groupKey = `ref_${refKey}`;
-    if (!groupKey && taskIdKey) groupKey = `task_${taskIdKey}`;
-    if (!groupKey) groupKey = `item_${item._id || Math.random()}`;
-
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, []);
+  // Connected Components / Union-Find to group related updates across days
+  const n = items.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (i) => {
+    let root = i;
+    while (root !== parent[root]) root = parent[root];
+    let curr = i;
+    while (curr !== root) {
+      let nxt = parent[curr];
+      parent[curr] = root;
+      curr = nxt;
     }
-    groups.get(groupKey).push(item);
-  });
+    return root;
+  };
+  const union = (i, j) => {
+    const rootI = find(i);
+    const rootJ = find(j);
+    if (rootI !== rootJ) parent[rootI] = rootJ;
+  };
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = items[i];
+      const b = items[j];
+
+      const aId = a._id ? String(a._id) : null;
+      const bId = b._id ? String(b._id) : null;
+      const aWorkRef = a.workUpdateRefId ? String(a.workUpdateRefId) : null;
+      const bWorkRef = b.workUpdateRefId ? String(b.workUpdateRefId) : null;
+      const aRef = a.referenceId ? String(a.referenceId) : null;
+      const bRef = b.referenceId ? String(b.referenceId) : null;
+      const aTaskId = (a.task_id && a.task_id !== "standalone") ? String(a.task_id) : (a.task?._id ? String(a.task._id) : null);
+      const bTaskId = (b.task_id && b.task_id !== "standalone") ? String(b.task_id) : (b.task?._id ? String(b.task._id) : null);
+      const aTitle = (a.taskTitle || a.displayTitle || a.name || a.title || a.phase || "").trim().toLowerCase();
+      const bTitle = (b.taskTitle || b.displayTitle || b.name || b.title || b.phase || "").trim().toLowerCase();
+
+      let connected = false;
+      // 1. workUpdateRefId links across days
+      if (aWorkRef && bId && aWorkRef === bId) connected = true;
+      else if (bWorkRef && aId && bWorkRef === aId) connected = true;
+      else if (aWorkRef && bWorkRef && aWorkRef === bWorkRef) connected = true;
+      // 2. Phase reference IDs
+      else if (aRef && bRef && aRef === bRef) connected = true;
+      // 3. Same formal task phase
+      else if (aTaskId && bTaskId && aTaskId === bTaskId && ((aRef && bRef && aRef === bRef) || (!aRef && !bRef))) connected = true;
+      // 4. Same title within standalone updates
+      else if (aTitle && bTitle && aTitle === bTitle && (!aTaskId || aTaskId === "standalone") && (!bTaskId || bTaskId === "standalone")) connected = true;
+
+      if (connected) union(i, j);
+    }
+  }
+
+  const clusters = new Map();
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(items[i]);
+  }
 
   const grouped = [];
-
-  groups.forEach((groupItems) => {
+  clusters.forEach((groupItems) => {
     const sorted = [...groupItems].sort((a, b) => {
       const dateA = new Date(a.date || a.completionDate || a.updateDate || a.createdAt || 0).getTime();
       const dateB = new Date(b.date || b.completionDate || b.updateDate || b.createdAt || 0).getTime();
-      return dateB - dateA;
+      if (dateA !== dateB) return dateB - dateA;
+      return String(b._id || "").localeCompare(String(a._id || ""));
     });
 
     const latest = sorted[0];
@@ -160,6 +198,7 @@ const AdminDashboard = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [actionType, setActionType] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [loginTime, setLoginTime] = useState(null);
   const [dailySlogan, setDailySlogan] = useState("");
 
@@ -173,6 +212,14 @@ const AdminDashboard = () => {
   const [statsLoading, setStatsLoading] = useState(true);
   const [employeeActivity, setEmployeeActivity] = useState([]);
   const [activityLoading, setActivityLoading] = useState(true);
+  const [expandedPermissionRows, setExpandedPermissionRows] = useState({});
+
+  const togglePermissionDropdown = (key) => {
+    setExpandedPermissionRows((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   const [selectedDateRange, setSelectedDateRange] = useState("today");
   const [customDate, setCustomDate] = useState("");
@@ -284,6 +331,10 @@ const AdminDashboard = () => {
 
   // ── Pagination for Employee Activity ─────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedConversionRecord, setSelectedConversionRecord] = useState(null);
+  const [showConversionModal, setShowConversionModal] = useState(false);
+  const [conversionRemarks, setConversionRemarks] = useState("");
+  const [conversionLoading, setConversionLoading] = useState(false);
   const ITEMS_PER_PAGE = 5;
 
   // Reset to first page when filters change
@@ -488,6 +539,60 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleOpenConversionModal = (record) => {
+    setSelectedConversionRecord(record);
+    setConversionRemarks("");
+    setShowConversionModal(true);
+  };
+
+  const handleApproveConversion = async () => {
+    if (!selectedConversionRecord?.permissionId) return;
+    try {
+      setConversionLoading(true);
+      const res = await portalInstance.post(
+        `/api/leaves/permission/${selectedConversionRecord.permissionId}/approve-conversion`,
+        { remarks: conversionRemarks }
+      );
+      if (res.data?.success) {
+        toast.success(res.data.message || "Half-Day leave conversion approved");
+        setShowConversionModal(false);
+        fetchEmployeeActivity();
+      } else {
+        toast.error(res.data?.message || "Failed to approve conversion");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to approve conversion");
+    } finally {
+      setConversionLoading(false);
+    }
+  };
+
+  const handleRejectConversion = async () => {
+    if (!selectedConversionRecord?.permissionId) return;
+    if (!conversionRemarks || !conversionRemarks.trim()) {
+      toast.warning("Remarks are mandatory when rejecting half-day conversion");
+      return;
+    }
+    try {
+      setConversionLoading(true);
+      const res = await portalInstance.post(
+        `/api/leaves/permission/${selectedConversionRecord.permissionId}/reject-conversion`,
+        { remarks: conversionRemarks }
+      );
+      if (res.data?.success) {
+        toast.success(res.data.message || "Half-Day leave conversion rejected");
+        setShowConversionModal(false);
+        fetchEmployeeActivity();
+      } else {
+        toast.error(res.data?.message || "Failed to reject conversion");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to reject conversion");
+    } finally {
+      setConversionLoading(false);
+    }
+  };
+
   const fetchEmployeeActivity = async () => {
     try {
       setActivityLoading(true);
@@ -528,7 +633,22 @@ const AdminDashboard = () => {
       setProjectDetailsLoading(true);
       const res = await portalInstance.get("/creat/task-meta");
       if (res.data?.success) {
-        setProjectDetails(res.data.data.fullProjects || []);
+        const raw = res.data.data.fullProjects || [];
+        const dedupedMap = new Map();
+        raw.forEach((p) => {
+          const cat = (p.categoryId?.name || "").trim().toLowerCase();
+          const proj = (p.name || "").trim().toLowerCase();
+          const key = `${cat}___${proj}`;
+          if (!dedupedMap.has(key)) {
+            dedupedMap.set(key, p);
+          } else {
+            const existing = dedupedMap.get(key);
+            if (p.name && /[A-Z]/.test(p.name) && !/[A-Z]/.test(existing.name)) {
+              existing.name = p.name;
+            }
+          }
+        });
+        setProjectDetails(Array.from(dedupedMap.values()));
       }
     } catch (err) {
       console.error("❌ Project details meta fetch error:", err);
@@ -1023,17 +1143,22 @@ const AdminDashboard = () => {
   const handleActionClick = (request, action) => {
     setSelectedRequest(request);
     setActionType(action);
+    setRejectReason("");
     setShowConfirmModal(true);
   };
 
   const processAction = async () => {
     if (!selectedRequest || !actionType) return;
+    if (actionType === "rejected" && !rejectReason.trim()) {
+      alert("Please provide a reason for rejecting the edit request.");
+      return;
+    }
     try {
       setActionLoading(selectedRequest._id);
       const payload =
         actionType === "approved"
           ? { status: "approved", approvedFields: selectedRequest.requestedFields || [], adminNote: "" }
-          : { status: "rejected", adminNote: "" };
+          : { status: "rejected", adminNote: rejectReason.trim() };
 
       const res = await portalInstance.put(`/profile/admin/edit-request/${selectedRequest._id}`, payload);
 
@@ -1042,6 +1167,7 @@ const AdminDashboard = () => {
         setShowConfirmModal(false);
         setSelectedRequest(null);
         setActionType(null);
+        setRejectReason("");
       }
     } catch (err) {
       console.error("❌ Process action error:", err);
@@ -1444,6 +1570,16 @@ const AdminDashboard = () => {
                                                       </span>
                                                     </td>
                                                     <td style={{ padding: "7px 10px", verticalAlign: "top", color: "#475569" }}>
+                                                      {(() => {
+                                                        const mainTitle = (u.taskTitle || u.displayTitle || u.name || u.title || "").trim();
+                                                        const hTitle = (h.title || h.taskTitle || h.displayTitle || h.name || h.phase || "").trim();
+                                                        const isTitleChanged = Boolean(hTitle && mainTitle && hTitle.toLowerCase() !== mainTitle.toLowerCase());
+                                                        return isTitleChanged ? (
+                                                          <div style={{ fontWeight: "600", color: "#1e293b", marginBottom: "4px", fontSize: "12px" }}>
+                                                            {hTitle}
+                                                          </div>
+                                                        ) : null;
+                                                      })()}
                                                       <div style={{ wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
                                                         {h.note || h.description || h.details || "—"}
                                                       </div>
@@ -1646,6 +1782,16 @@ const AdminDashboard = () => {
                                           </span>
                                         </td>
                                         <td style={{ padding: "5px 8px", verticalAlign: "top", color: "#475569" }}>
+                                          {(() => {
+                                            const mainTitle = (u.taskTitle || u.displayTitle || u.name || u.title || "").trim();
+                                            const hTitle = (h.title || h.taskTitle || h.displayTitle || h.name || h.phase || "").trim();
+                                            const isTitleChanged = Boolean(hTitle && mainTitle && hTitle.toLowerCase() !== mainTitle.toLowerCase());
+                                            return isTitleChanged ? (
+                                              <div style={{ fontWeight: "600", color: "#1e293b", marginBottom: "3px", fontSize: "11px" }}>
+                                                {hTitle}
+                                              </div>
+                                            ) : null;
+                                          })()}
                                           <div>{h.note || h.description || h.details || "—"}</div>
                                           {Array.isArray(h.pages) && h.pages.length > 0 && (
                                             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "4px" }}>
@@ -1710,11 +1856,11 @@ const AdminDashboard = () => {
             <PasswordExpiryBanner expiryDate={expiryDate} onDismiss={() => setShowPwdBanner(false)} />
           )}
 
-          {/* ── Holiday Assignment Alert Banner ── */}
+
           <HolidayAssignmentBanner />
 
-          {/* ── Leave Category Alert Banner ── */}
           <LeaveCategoryBanner />
+          
 
           {/* ── Kural Banner ── */}
           <div className="employee-dashboard-banner">
@@ -2170,35 +2316,149 @@ const AdminDashboard = () => {
                       </td>
                     </tr>
                   ) : (
-                    paginatedData.map((emp, idx) => (
-                      <tr key={emp._id || idx}>
-                        <td>{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</td>
-                        <td>{emp.empId}</td>
-                        <td>{emp.name}</td>
-                        <td>{emp.inTime || "-"}</td>
-                        <td>{emp.outTime || "-"}</td>
-                        <td>
-                          <div className="admin-dash-status-wrapper">
-                            <div className="admin-dash-status-row">
-                              <span className={`admin-dash-status ${getStatusClass(emp.status)}`}>
-                                {emp.status && emp.status.toLowerCase().includes("wfh") ? (
-                                  <>
-                                    {emp.status.replace(/-?\s*wfh/i, "").trim()}
-                                    <span className="wfh-badge" style={{ marginLeft: "6px" }}>WFH</span>
-                                  </>
-                                ) : emp.status === "-" ? "-" : emp.status || "Unknown"}
-                              </span>
-                              {emp.status?.toLowerCase().includes("late") && emp.lateEntryReason && (
-                                <div className="late-reason-tooltip-wrapper">
-                                  <FaInfoCircle className="late-reason-info-icon" />
-                                  <div className="late-reason-tooltip-box">Reason: {emp.lateEntryReason}</div>
+                    paginatedData.map((emp, idx) => {
+                      const empKey = emp._id || emp.employeeId || idx;
+                      const isExpanded = !!expandedPermissionRows[empKey];
+
+                      return (
+                        <React.Fragment key={empKey}>
+                          <tr>
+                            <td>
+                              <div className="emp-activity-sno-cell">
+                                <span>{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</span>
+                                {emp.hasPermission && (
+                                  <span
+                                    className={`emp-activity-perm-toggle ${isExpanded ? "active" : ""}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      togglePermissionDropdown(empKey);
+                                    }}
+                                    title={isExpanded ? "Click to collapse permission details" : "Click to view permission details"}
+                                  >
+                                    <FaChevronDown
+                                      className={`emp-activity-perm-chevron ${isExpanded ? "rotated" : ""}`}
+                                    />
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td>{emp.empId}</td>
+                            <td>
+                              <span className="emp-activity-emp-name">{emp.name}</span>
+                            </td>
+                            <td title={emp.checkIn1 && emp.checkIn2 && emp.checkIn1 !== "-" && emp.checkIn2 !== "-" ? `1st In: ${emp.checkIn1} | Re-Check-In: ${emp.checkIn2}` : undefined}>
+                              {emp.inTime || "-"}
+                            </td>
+                            <td title={emp.checkOut1 && emp.checkOut2 && emp.checkOut1 !== "-" && emp.checkOut2 !== "-" ? `1st Out: ${emp.checkOut1} | Final Out: ${emp.checkOut2}` : undefined}>
+                              {emp.outTime || "-"}
+                            </td>
+                            <td>
+                              <div className="admin-dash-status-wrapper">
+                                <div className="admin-dash-status-row">
+                                  <span className={`admin-dash-status ${getStatusClass(emp.status)}`}>
+                                    {emp.status && emp.status.toLowerCase().includes("wfh") ? (
+                                      <>
+                                        {emp.status.replace(/-?\s*wfh/i, "").trim()}
+                                        <span className="wfh-badge">WFH</span>
+                                      </>
+                                    ) : emp.status === "-" ? "-" : emp.status || "Unknown"}
+                                  </span>
+
+                                  {emp.status?.toLowerCase().includes("late") && emp.lateEntryReason && (
+                                    <div className="late-reason-tooltip-wrapper">
+                                      <FaInfoCircle className="late-reason-info-icon" />
+                                      <div className="late-reason-tooltip-box">Reason: {emp.lateEntryReason}</div>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+
+                                {/* Badges / Review Conversion Buttons */}
+                                {emp.halfDayConversionStatus === "Pending Review" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenConversionModal(emp)}
+                                    className="admin-dash-conversion-btn"
+                                  >
+                                    Review Conversion
+                                  </button>
+                                )}
+
+                                {emp.halfDayConversionStatus === "Approved" && emp.policyStatus !== "Half-Day Leave Covered" && (
+                                  <span className="admin-dash-converted-badge">
+                                    Converted (0.5d)
+                                  </span>
+                                )}
+
+                                {emp.halfDayConversionStatus === "Rejected" && (
+                                  <span
+                                    className="admin-dash-conversion-rejected-badge"
+                                    title={emp.adminRemarks ? `Remark: ${emp.adminRemarks}` : "Rejected"}
+                                  >
+                                    Conversion Rejected
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Full row format for permission details displayed across all columns */}
+                          {emp.hasPermission && isExpanded && (
+                            <tr key={`${empKey}-expanded`} className="permission-expanded-row">
+                              <td colSpan={6} className="permission-expanded-cell">
+                                <div className="permission-expanded-card">
+                                  <div className="permission-expanded-header">
+                                    <div className="permission-expanded-item">
+                                      <span className="permission-expanded-label">Permission Applied:</span>
+                                      <span className="permission-expanded-val-applied">
+                                        {emp.requestedFrom && emp.requestedTo && emp.requestedFrom !== "-" ? `${emp.requestedFrom} - ${emp.requestedTo}` : "-"}
+                                        {emp.requestedDurationMinutes > 0 ? ` (${emp.requestedDurationMinutes} mins)` : ""}
+                                      </span>
+                                    </div>
+
+                                    <div className="permission-expanded-item">
+                                      <span className="permission-expanded-label">Permission Used:</span>
+                                      <span
+                                        className={`permission-expanded-val-used ${
+                                          emp.actualDurationMinutes > 120
+                                            ? "used-exceeded"
+                                            : emp.actualDurationMinutes > (emp.requestedDurationMinutes || 120)
+                                            ? "used-warning"
+                                            : "used-regular"
+                                        }`}
+                                      >
+                                        {emp.actualCheckout && emp.actualCheckout !== "-" && emp.actualRecheckIn && emp.actualRecheckIn !== "-"
+                                          ? `${emp.actualCheckout} - ${emp.actualRecheckIn} (${emp.actualDurationMinutes} mins)`
+                                          : emp.actualCheckout && emp.actualCheckout !== "-"
+                                          ? `${emp.actualCheckout} - In Progress`
+                                          : emp.actualDurationMinutes > 0
+                                          ? `${emp.actualDurationMinutes} mins`
+                                          : "Not Used Yet"}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div
+                                    className={`permission-expanded-note ${
+                                      emp.actualDurationMinutes > 120 || emp.policyStatus === "Limit Exceeded" || emp.policyStatus === "Half-Day Leave Covered"
+                                        ? "note-exceeded"
+                                        : "note-regular"
+                                    }`}
+                                  >
+                                    <strong>Note: </strong>
+                                    {emp.actualDurationMinutes > 120 || emp.policyStatus === "Limit Exceeded" || emp.policyStatus === "Half-Day Leave Covered"
+                                      ? `Employee utilized permission beyond the 2-hour daily limit (${emp.actualCheckout || "Out"} – ${emp.actualRecheckIn || "In"}). Converted to 0.5-day Half-Day Leave per policy.`
+                                      : emp.actualDurationMinutes > 0
+                                      ? `Employee utilized permission from ${emp.actualCheckout} to ${emp.actualRecheckIn} (${emp.actualDurationMinutes} mins), within the permitted 2-hour limit. Regular attendance maintained.`
+                                      : emp.actualCheckout && emp.actualCheckout !== "-"
+                                      ? `Permission currently active since ${emp.actualCheckout}. Daily allowance is limited to 2 hours.`
+                                      : "Permission approved for the scheduled duration. Regular attendance applies upon timely return."}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}                        </React.Fragment>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -2548,10 +2808,24 @@ const AdminDashboard = () => {
                 <p><strong>ID:</strong> {selectedRequest.employeeId?.empId || selectedRequest.employeeId?.empIdString || selectedRequest.empIdString || "-"}</p>
                 <p><strong>Message:</strong> {selectedRequest.requestMessage}</p>
               </div>
-              {actionType === "approved" && (
+              {actionType === "approved" ? (
                 <p className="admin-editrequest-approval-note">
                   The employee will be able to edit their profile after approval.
                 </p>
+              ) : (
+                <div className="mt-3">
+                  <label className="form-label mb-1" style={{ fontWeight: "600", fontSize: "14px", color: "#374151" }}>
+                    Reason for Rejection <span className="text-danger">*</span>
+                  </label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="Enter reason for rejecting this edit request..."
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    style={{ resize: "vertical", fontSize: "14px" }}
+                  />
+                </div>
               )}
             </div>
           )}
@@ -2569,7 +2843,7 @@ const AdminDashboard = () => {
             type="button"
             className={`common-modal-btn ${actionType === "approved" ? "btn-update" : "btn-reject"}`}
             onClick={processAction}
-            disabled={actionLoading}
+            disabled={actionLoading || (actionType === "rejected" && !rejectReason.trim())}
           >
             {actionLoading ? <Spinner animation="border" size="sm" /> : `Yes, ${actionType === "approved" ? "Approve" : "Reject"}`}
           </button>
@@ -2608,7 +2882,7 @@ const AdminDashboard = () => {
                 <div className="col-md-8">
                   <div className="mb-4">
                     <label className="text-muted text-uppercase fw-bold mb-1" style={{ fontSize: "10px", letterSpacing: "0.5px" }}>Title</label>
-                    <h6 style={{ color: "#3A466D", fontWeight: "600", fontSize: "15px" }}>{selectedUpdate.displayTitle}</h6>
+                    <h6 style={{ color: "#3A466D", fontWeight: "600", fontSize: "15px" }}>{selectedUpdate.title || selectedUpdate.displayTitle || selectedUpdate.taskTitle}</h6>
                   </div>
                   <div className="mb-0">
                     <label className="text-muted text-uppercase fw-bold mb-1" style={{ fontSize: "10px", letterSpacing: "0.5px" }}>Full Work Summary</label>
@@ -2657,6 +2931,107 @@ const AdminDashboard = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      {/* ── HALF-DAY CONVERSION REVIEW MODAL ── */}
+      <Modal
+        show={showConversionModal}
+        onHide={() => setShowConversionModal(false)}
+        centered
+        backdrop="static"
+      >
+        <Modal.Header closeButton className="border-0 pb-0">
+          <Modal.Title style={{ fontSize: "16px", fontWeight: "600", color: "#1f2937" }}>
+            Review Half-Day Leave Conversion
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="pt-2">
+          {selectedConversionRecord && (
+            <div>
+              <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "12px", marginBottom: "14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "13px", color: "#6b7280" }}>Employee:</span>
+                  <span style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>
+                    {selectedConversionRecord.name} ({selectedConversionRecord.empId})
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "13px", color: "#6b7280" }}>Requested Time:</span>
+                  <span style={{ fontSize: "13px", color: "#374151" }}>
+                    {selectedConversionRecord.requestedFrom} - {selectedConversionRecord.requestedTo} ({selectedConversionRecord.requestedDurationMinutes} mins)
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "13px", color: "#6b7280" }}>Actual Checkout / Return:</span>
+                  <span style={{ fontSize: "13px", color: "#374151" }}>
+                    {selectedConversionRecord.actualCheckout} - {selectedConversionRecord.actualRecheckIn}
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "13px", color: "#6b7280" }}>Actual Absence Duration:</span>
+                  <span style={{ fontSize: "13px", fontWeight: "700", color: "#dc2626" }}>
+                    {selectedConversionRecord.actualDurationMinutes} mins (Max allowed: 120 mins)
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: "13px", color: "#6b7280" }}>Excess Absence Beyond 2h:</span>
+                  <span style={{ fontSize: "13px", fontWeight: "700", color: "#b91c1c" }}>
+                    {Math.max(0, (selectedConversionRecord.actualDurationMinutes || 0) - 120)} mins
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ background: "#fffbeb", border: "1px solid #fef3c7", borderRadius: "6px", padding: "10px", marginBottom: "14px", fontSize: "12px", color: "#92400e" }}>
+                <strong>Policy Rule:</strong> The employee exceeded the 2-hour daily permission limit. Approving will convert this overrun into a Half-Day Leave and deduct <strong>0.5 day</strong> from their leave balance.
+              </div>
+
+              <div className="mb-2">
+                <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "4px", display: "block" }}>
+                  Admin Remarks {conversionRemarks.trim() ? "" : "(Mandatory if rejecting)"}:
+                </label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  value={conversionRemarks}
+                  onChange={(e) => setConversionRemarks(e.target.value)}
+                  placeholder="Enter reason or review remarks..."
+                  style={{ fontSize: "13px" }}
+                />
+              </div>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer className="border-0 pt-0 d-flex justify-content-between">
+          <button
+            type="button"
+            className="common-modal-btn btn-cancel"
+            onClick={() => setShowConversionModal(false)}
+            disabled={conversionLoading}
+            style={{ padding: "6px 14px", fontSize: "13px" }}
+          >
+            Cancel
+          </button>
+          <div className="d-flex gap-2">
+            <button
+              type="button"
+              className="btn btn-outline-danger"
+              onClick={handleRejectConversion}
+              disabled={conversionLoading}
+              style={{ padding: "6px 14px", fontSize: "13px", borderRadius: "6px" }}
+            >
+              Reject Conversion
+            </button>
+            <button
+              type="button"
+              className="common-modal-btn btn-confirm-success"
+              onClick={handleApproveConversion}
+              disabled={conversionLoading}
+              style={{ padding: "6px 16px", fontSize: "13px" }}
+            >
+              {conversionLoading ? "Processing..." : "Approve (0.5d Leave)"}
+            </button>
+          </div>
+        </Modal.Footer>
+      </Modal>
+
       <ToastContainer position="top-right" autoClose={3000} />
     </>
   );

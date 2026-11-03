@@ -16,6 +16,12 @@
   padding-left: 13px !important;
 }
 
+@media (max-width: 768px) {
+  .common-page-container {
+    padding-left: 0px !important;
+  }
+}
+
 
 @media (min-width: 1400px) {
   .hol-page {
