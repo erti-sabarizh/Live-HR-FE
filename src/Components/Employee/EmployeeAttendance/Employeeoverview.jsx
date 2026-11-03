@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "../../Admin/AttendanceReport/AttendanceOverview.css";
 import "../../Common/CustomDropdown.css";
@@ -44,7 +44,7 @@ const CALENDAR_MONTHS = [
 /* =============================
    MINI CALENDAR
 ============================= */
-function MiniCalendar({ month, calendarData = [], year }) {
+function MiniCalendar({ month, calendarData = [], year, filter = null }) {
     const realMonthIndexMap = {
         January: 0,
         February: 1,
@@ -136,28 +136,65 @@ function MiniCalendar({ month, calendarData = [], year }) {
                         );
                     }
 
-                    const normalizedStatus = cell.status?.toLowerCase();
-                    let cls = "attendanceoverview-day";
-                    if (normalizedStatus === "present" || normalizedStatus === "wfh") cls += " present";
-                    if (normalizedStatus === "absent") cls += " absent";
-                    if (normalizedStatus === "holiday") cls += " holiday";
-                    if (normalizedStatus === "weekend") cls += " weekend";
-                    if (normalizedStatus === "leave") cls += " leave";
-                    if (["half-day-leave", "half-day", "half_day"].includes(normalizedStatus)) cls += " half-day";
-                    if (cell.isToday) cls += " today";
+                    const normalizedStatus = cell.status ? String(cell.status).toLowerCase().trim() : "";
+
+                    if (!filter) {
+                        let cls = "attendanceoverview-day";
+                        if (normalizedStatus === "weekend") cls += " weekend";
+
+                        return (
+                            <div key={i} className={cls}>
+                                <span className={`day-number ${cell.isToday ? "today-highlight" : ""} ${normalizedStatus === "holiday" ? "holiday-highlight" : ""}`}>
+                                    {cell.day}
+                                </span>
+                            </div>
+                        );
+                    }
+
+                    let isMatch = false;
+                    let highlightClass = "";
+
+                    if (filter === "present") {
+                        if (
+                            normalizedStatus === "present" ||
+                            normalizedStatus === "wfh" ||
+                            normalizedStatus.includes("present") ||
+                            normalizedStatus.includes("wfh") ||
+                            normalizedStatus.includes("late entry")
+                        ) {
+                            isMatch = true;
+                            highlightClass = "filter-highlight-present";
+                        }
+                    } else if (filter === "absent") {
+                        if (
+                            normalizedStatus === "absent" ||
+                            normalizedStatus === "not checked-in"
+                        ) {
+                            isMatch = true;
+                            highlightClass = "filter-highlight-absent";
+                        }
+                    } else if (filter === "leave") {
+                        if (
+                            !normalizedStatus.includes("half") &&
+                            (normalizedStatus === "leave" ||
+                             normalizedStatus === "approved" ||
+                             normalizedStatus.includes("leave"))
+                        ) {
+                            isMatch = true;
+                            highlightClass = "filter-highlight-leave";
+                        }
+                    } else if (filter === "half-day") {
+                        if (normalizedStatus.includes("half")) {
+                            isMatch = true;
+                            highlightClass = "filter-highlight-half-day";
+                        }
+                    }
 
                     return (
-                        <div key={i} className={cls}>
-                            <span className={`day-number ${cell.isToday ? "today-highlight" : ""} ${normalizedStatus === "holiday" ? "holiday-highlight" : ""}`}>
+                        <div key={i} className="attendanceoverview-day">
+                            <span className={`day-number ${isMatch ? highlightClass : ""}`}>
                                 {cell.day}
                             </span>
-                            {/* Dots for status */}
-                            {["present", "wfh", "absent", "leave", "holiday"].includes(normalizedStatus) && (
-                                <span className={`status-dot ${normalizedStatus === "wfh" ? "present" : normalizedStatus}`}></span>
-                            )}
-                            {["half-day-leave", "half-day", "half_day"].includes(normalizedStatus) && (
-                                <span className="status-dot half-day-leave"></span>
-                            )}
                         </div>
                     );
                 })}
@@ -198,6 +235,81 @@ function EmployeeOverview() {
     const [monthlyData, setMonthlyData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth <= 768 : false);
+    const [attendanceFilter, setAttendanceFilter] = useState(null);
+
+    const handleFilterToggle = (status) => {
+        setAttendanceFilter((prev) => (prev === status ? null : status));
+    };
+
+    const formatRecordDate = (dateStr) => {
+        if (!dateStr) return { formatted: "-", weekday: "" };
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return { formatted: dateStr, weekday: "" };
+            const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+            const day = d.getDate();
+            const month = d.toLocaleDateString("en-US", { month: "short" });
+            const yearVal = d.getFullYear();
+            return {
+                formatted: `${day < 10 ? "0" + day : day} ${month} ${yearVal}`,
+                weekday,
+            };
+        } catch {
+            return { formatted: dateStr, weekday: "" };
+        }
+    };
+
+    const filterDetails = useMemo(() => {
+        if (attendanceFilter !== "leave" && attendanceFilter !== "absent") {
+            return null;
+        }
+
+        const records = [];
+        const seenDates = new Set();
+
+        monthlyData.forEach((monthDays) => {
+            if (!Array.isArray(monthDays)) return;
+            monthDays.forEach((cell) => {
+                if (!cell || !cell.date || !cell.status) return;
+                const norm = String(cell.status).toLowerCase().trim();
+
+                if (attendanceFilter === "leave") {
+                    const isLeaveMatch = !norm.includes("half") && (norm === "leave" || norm === "approved" || norm.includes("leave"));
+                    if (isLeaveMatch && !seenDates.has(cell.date)) {
+                        seenDates.add(cell.date);
+                        records.push({
+                            date: cell.date,
+                            day: cell.day,
+                            type: cell.leaveType || "Leave Approved",
+                            reason: cell.reason || "Approved Leave",
+                            dayType: cell.dayType || "1 Day",
+                            status: "Approved",
+                        });
+                    }
+                } else if (attendanceFilter === "absent") {
+                    const isAbsentMatch = norm === "absent" || norm === "not checked-in";
+                    if (isAbsentMatch && !seenDates.has(cell.date)) {
+                        seenDates.add(cell.date);
+                        records.push({
+                            date: cell.date,
+                            day: cell.day,
+                            type: cell.leaveType || "Absent",
+                            reason: cell.reason || "No Intimation",
+                            dayType: cell.dayType || "Full Day",
+                            status: "Absent",
+                        });
+                    }
+                }
+            });
+        });
+
+        records.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        return {
+            filterType: attendanceFilter,
+            records,
+        };
+    }, [monthlyData, attendanceFilter]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -620,25 +732,61 @@ function EmployeeOverview() {
                 <div className="attendanceoverview-calendar-card">
                     {/* ── Attendance Legend ── */}
                     <div className="emp-attendance-overview-legend">
-                        <div className="emp-attendance-legend-item">
+                        <div
+                            className="emp-attendance-legend-item clickable"
+                            onClick={() => handleFilterToggle("present")}
+                        >
+                            <input
+                                type="radio"
+                                className="emp-attendance-legend-radio radio-present"
+                                checked={attendanceFilter === "present"}
+                                readOnly
+                            />
                             <span className="emp-attendance-legend-pill emp-attendance-present"></span>
                             <span className="emp-attendance-legend-label">Present</span>
                         </div>
-                        <div className="emp-attendance-legend-item">
+                        <div
+                            className="emp-attendance-legend-item clickable"
+                            onClick={() => handleFilterToggle("absent")}
+                        >
+                            <input
+                                type="radio"
+                                className="emp-attendance-legend-radio radio-absent"
+                                checked={attendanceFilter === "absent"}
+                                readOnly
+                            />
                             <span className="emp-attendance-legend-pill emp-attendance-absent"></span>
                             <div className="emp-attendance-legend-text-group">
                                 <span className="emp-attendance-legend-label">Absent</span>
                                 <small className="emp-attendance-legend-subtext">( No Intimation)</small>
                             </div>
                         </div>
-                        <div className="emp-attendance-legend-item">
+                        <div
+                            className="emp-attendance-legend-item clickable"
+                            onClick={() => handleFilterToggle("leave")}
+                        >
+                            <input
+                                type="radio"
+                                className="emp-attendance-legend-radio radio-leave"
+                                checked={attendanceFilter === "leave"}
+                                readOnly
+                            />
                             <span className="emp-attendance-legend-pill emp-attendance-approved"></span>
                             <div className="emp-attendance-legend-text-group">
                                 <span className="emp-attendance-legend-label">Leave</span>
                                 <small className="emp-attendance-legend-subtext">( Leave Approved )</small>
                             </div>
                         </div>
-                        <div className="emp-attendance-legend-item">
+                        <div
+                            className="emp-attendance-legend-item clickable"
+                            onClick={() => handleFilterToggle("half-day")}
+                        >
+                            <input
+                                type="radio"
+                                className="emp-attendance-legend-radio radio-half-day"
+                                checked={attendanceFilter === "half-day"}
+                                readOnly
+                            />
                             <span className="emp-attendance-legend-pill emp-attendance-half-day"></span>
                             <div className="emp-attendance-legend-text-group">
                                 <span className="emp-attendance-legend-label">Half Day</span>
@@ -696,6 +844,7 @@ function EmployeeOverview() {
                                         month={monthNames[currentMonth]}
                                         year={currentYear}
                                         calendarData={monthlyData[dataIndex] || []}
+                                        filter={attendanceFilter}
                                     />
                                 );
 
@@ -712,6 +861,87 @@ function EmployeeOverview() {
                             return calendars;
                         })()}
                     </div>
+
+                    {/* ===== LEAVE & ABSENT DETAILS CONTAINER ===== */}
+                    {filterDetails && (
+                        <div className={`attendance-filter-details-container ${filterDetails.filterType}`}>
+                            <div className="filter-details-header">
+                                <div className="filter-details-header-left">
+                                    <div className={`filter-details-icon-wrapper ${filterDetails.filterType}`}>
+                                        {filterDetails.filterType === "leave" ? (
+                                            <Icon icon="mdi:calendar-check" width="22" height="22" />
+                                        ) : (
+                                            <Icon icon="mdi:alert-circle" width="22" height="22" />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <h3 className="filter-details-title">
+                                            {filterDetails.filterType === "leave" ? "Leave Details" : "Absent Details"}
+                                        </h3>
+                                        <p className="filter-details-subtitle">
+                                            {filterDetails.filterType === "leave"
+                                                ? "Showing all approved leave dates, types, and reasons"
+                                                : "Showing all unexcused absent dates and records"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="filter-details-header-right">
+                                    <span className={`filter-details-count-pill ${filterDetails.filterType}`}>
+                                        Total: {filterDetails.records.length} {filterDetails.records.length === 1 ? "Day" : "Days"}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="filter-details-close-btn"
+                                        onClick={() => setAttendanceFilter(null)}
+                                        title="Close details"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+
+                            {filterDetails.records.length === 0 ? (
+                                <div className="filter-details-empty">
+                                    <p>No {filterDetails.filterType} records found for the selected period.</p>
+                                </div>
+                            ) : (
+                                <div className="filter-details-table-wrapper">
+                                    <table className="filter-details-table">
+                                        <thead>
+                                            <tr>
+                                                <th className="filter-details-th-sno">S.No</th>
+                                                <th className="filter-details-th-date">Date</th>
+                                                <th className="filter-details-th-type">Type</th>
+                                                <th className="filter-details-th-reason">Reason</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filterDetails.records.map((rec, idx) => {
+                                                const dateInfo = formatRecordDate(rec.date);
+                                                return (
+                                                    <tr key={rec.date || idx}>
+                                                        <td className="filter-details-td-sno">{idx + 1}</td>
+                                                        <td className="filter-details-td-date">
+                                                            <div className="date-main">{dateInfo.formatted}</div>
+                                                            <div className="date-weekday">{dateInfo.weekday}</div>
+                                                        </td>
+                                                        <td>
+                                                            <span className={`filter-details-type-tag ${filterDetails.filterType}`}>
+                                                                {rec.type}
+                                                            </span>
+                                                        </td>
+                                                        <td className="filter-details-td-reason">
+                                                            {rec.reason}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
             </div>
