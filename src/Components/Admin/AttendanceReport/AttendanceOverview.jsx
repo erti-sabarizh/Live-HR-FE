@@ -8,6 +8,7 @@ import { Icon } from "@iconify/react";
 import { portalInstance } from "../../../Services/instance";
 import { useUser } from "../../UserContext";
 import { canHrMonthlyAttendance } from "../../../utils/hrAccessHelper";
+import Pagination from "../../Employee/Pagination/Pagination";
 
 /* =============================
    STATIC FALLBACK DATA
@@ -42,9 +43,9 @@ const CALENDAR_MONTHS = [
 ];
 
 /* =============================
-   MINI CALENDAR
+   MINI CALENDAR (Memoized)
 ============================= */
-function MiniCalendar({ month, calendarData = [], year, filter = null }) {
+const MiniCalendar = React.memo(function MiniCalendar({ month, calendarData = [], year, filter = null }) {
     const realMonthIndexMap = {
         January: 0,
         February: 1,
@@ -63,53 +64,57 @@ function MiniCalendar({ month, calendarData = [], year, filter = null }) {
     const monthIndex = realMonthIndexMap[month];
     const actualYear = year;
 
-    const daysInMonth = new Date(actualYear, monthIndex + 1, 0).getDate();
-    const firstDayWeekday = new Date(actualYear, monthIndex, 1).getDay();
+    const cells = useMemo(() => {
+        const daysInMonth = new Date(actualYear, monthIndex + 1, 0).getDate();
+        const firstDayWeekday = new Date(actualYear, monthIndex, 1).getDay();
+        const calendarMap = new Map((calendarData || []).map((d) => [d.day, d]));
+        const result = [];
 
-    const cells = [];
-
-    // ─── PREVIOUS MONTH PADDING ───
-    for (let i = 0; i < firstDayWeekday; i++) {
-        cells.push({ type: "empty" });
-    }
-
-    // ─── CURRENT MONTH DAYS ───
-    for (let day = 1; day <= daysInMonth; day++) {
-        const record = calendarData.find((d) => d.day === day);
-
-        const dateObj = new Date(actualYear, monthIndex, day);
-        const weekday = dateObj.getDay();
-
-        const isSunday = weekday === 0;
-        const isSecondSaturday = weekday === 6 && Math.ceil(day / 7) === 2;
-        const isFourthSaturday = weekday === 6 && Math.ceil(day / 7) === 4;
-
-        let status = record?.status || null;
-
-        // Fallback weekend detection if backend didn't send status
-        if (!status) {
-            if (isSunday || isSecondSaturday || isFourthSaturday) {
-                status = "weekend";
-            }
+        // ─── PREVIOUS MONTH PADDING ───
+        for (let i = 0; i < firstDayWeekday; i++) {
+            result.push({ type: "empty" });
         }
 
-        cells.push({
-            type: "day",
-            day,
-            status,
-            isToday: record?.isToday || false,
-        });
-    }
+        // ─── CURRENT MONTH DAYS ───
+        for (let day = 1; day <= daysInMonth; day++) {
+            const record = calendarMap.get(day);
 
-    // ─── NEXT MONTH PADDING — FORCE 42 CELLS ───
-    let nextMonthDay = 1;
-    while (cells.length < 42) {
-        cells.push({
-            type: "next",
-            day: nextMonthDay++,
-            status: "inactive",
-        });
-    }
+            const dateObj = new Date(actualYear, monthIndex, day);
+            const weekday = dateObj.getDay();
+
+            const isSunday = weekday === 0;
+            const isSecondSaturday = weekday === 6 && Math.ceil(day / 7) === 2;
+            const isFourthSaturday = weekday === 6 && Math.ceil(day / 7) === 4;
+
+            let status = record?.status || null;
+
+            // Fallback weekend detection if backend didn't send status
+            if (!status) {
+                if (isSunday || isSecondSaturday || isFourthSaturday) {
+                    status = "weekend";
+                }
+            }
+
+            result.push({
+                type: "day",
+                day,
+                status,
+                isToday: record?.isToday || false,
+            });
+        }
+
+        // ─── NEXT MONTH PADDING — FORCE 42 CELLS ───
+        let nextMonthDay = 1;
+        while (result.length < 42) {
+            result.push({
+                type: "next",
+                day: nextMonthDay++,
+                status: "inactive",
+            });
+        }
+
+        return result;
+    }, [actualYear, monthIndex, calendarData]);
 
     return (
         <div className="attendanceoverview-month-card">
@@ -206,7 +211,7 @@ function MiniCalendar({ month, calendarData = [], year, filter = null }) {
             </div>
         </div>
     );
-}
+});
 
 /* =============================
    MAIN COMPONENT
@@ -265,9 +270,13 @@ function AttendanceOverview() {
     const [loading, setLoading] = useState(true);
     const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth <= 768 : false);
     const [attendanceFilter, setAttendanceFilter] = useState(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(5);
+    const [pageSizeDropdownOpen, setPageSizeDropdownOpen] = useState(false);
 
     const handleFilterToggle = (status) => {
         setAttendanceFilter((prev) => (prev === status ? null : status));
+        setCurrentPage(1);
     };
 
     const formatRecordDate = (dateStr) => {
@@ -429,6 +438,7 @@ function AttendanceOverview() {
                             setToMonthDropdownOpen(false);
                             setFromYearDropdownOpen(false);
                             setToYearDropdownOpen(false);
+                            setPageSizeDropdownOpen(false);
                         }
                         setIsOpen(!isOpen);
                     }}
@@ -612,6 +622,7 @@ function AttendanceOverview() {
                 setToMonthDropdownOpen(false);
                 setFromYearDropdownOpen(false);
                 setToYearDropdownOpen(false);
+                setPageSizeDropdownOpen(false);
             }
         };
         document.addEventListener("mousedown", handleClickOutside);
@@ -1019,88 +1030,121 @@ function AttendanceOverview() {
                             return calendars;
                         })()}
                     </div>
+                </div>
 
-                    {/* ===== LEAVE & ABSENT DETAILS CONTAINER ===== */}
-                    {filterDetails && (
-                        <div className={`attendance-filter-details-container ${filterDetails.filterType}`}>
-                            <div className="filter-details-header">
-                                <div className="filter-details-header-left">
-                                    <div className={`filter-details-icon-wrapper ${filterDetails.filterType}`}>
-                                        {filterDetails.filterType === "leave" ? (
-                                            <Icon icon="mdi:calendar-check" width="22" height="22" />
-                                        ) : (
-                                            <Icon icon="mdi:alert-circle" width="22" height="22" />
-                                        )}
-                                    </div>
-                                    <div>
-                                        <h3 className="filter-details-title">
-                                            {filterDetails.filterType === "leave" ? "Leave Details" : "Absent Details"}
-                                        </h3>
-                                        <p className="filter-details-subtitle">
-                                            {filterDetails.filterType === "leave"
-                                                ? "Showing all approved leave dates, types, and reasons"
-                                                : "Showing all unexcused absent dates and records"}
-                                        </p>
-                                    </div>
+                {/* ===== LEAVE & ABSENT DETAILS CONTAINER ===== */}
+                {filterDetails && (
+                    <div className={`attendance-filter-details-container ${filterDetails.filterType}`}>
+                        {/* ── Separate Leave Details Header Card ── */}
+                        <div className={`filter-details-header-card ${filterDetails.filterType}`}>
+                            <div className="filter-details-header-left">
+                                <div className="filter-details-icon-wrapper">
+                                    <img
+                                        src="/Personal Details.png"
+                                        alt="Details"
+                                        className="filter-details-header-img"
+                                    />
                                 </div>
-                                <div className="filter-details-header-right">
-                                    <span className={`filter-details-count-pill ${filterDetails.filterType}`}>
-                                        Total: {filterDetails.records.length} {filterDetails.records.length === 1 ? "Day" : "Days"}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        className="filter-details-close-btn"
-                                        onClick={() => setAttendanceFilter(null)}
-                                        title="Close details"
-                                    >
-                                        ✕
-                                    </button>
+                                <div>
+                                    <h3 className="filter-details-title">
+                                        {filterDetails.filterType === "leave" ? "Leave Details" : "Absent Details"}
+                                    </h3>
+                                    <p className="filter-details-subtitle">
+                                        {filterDetails.filterType === "leave"
+                                            ? "Showing all approved leave dates, types, and reasons"
+                                            : "Showing all unexcused absent dates and records"}
+                                    </p>
                                 </div>
                             </div>
+                            <div className="filter-details-header-right">
+                                <span className={`filter-details-count-pill ${filterDetails.filterType}`}>
+                                    Total: {filterDetails.records.length} {filterDetails.records.length === 1 ? "Day" : "Days"}
+                                </span>
 
+                                <div className="filter-details-page-size-selector">
+                                    <span className="filter-details-page-size-label">Rows:</span>
+                                    <div className="filter-details-page-size-dropdown">
+                                        <CustomDropdown
+                                            value={pageSize}
+                                            options={[5, 10, 20, 30]}
+                                            isOpen={pageSizeDropdownOpen}
+                                            setIsOpen={setPageSizeDropdownOpen}
+                                            onChange={(val) => {
+                                                setPageSize(Number(val));
+                                                setCurrentPage(1);
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ── Separate Table Card Under Header ── */}
+                        <div className={`filter-details-table-card ${filterDetails.filterType}`}>
                             {filterDetails.records.length === 0 ? (
                                 <div className="filter-details-empty">
                                     <p>No {filterDetails.filterType} records found for the selected period.</p>
                                 </div>
                             ) : (
-                                <div className="filter-details-table-wrapper">
-                                    <table className="filter-details-table">
-                                        <thead>
-                                            <tr>
-                                                <th className="filter-details-th-sno">S.No</th>
-                                                <th className="filter-details-th-date">Date</th>
-                                                <th className="filter-details-th-type">Type</th>
-                                                <th className="filter-details-th-reason">Reason</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filterDetails.records.map((rec, idx) => {
-                                                const dateInfo = formatRecordDate(rec.date);
-                                                return (
-                                                    <tr key={rec.date || idx}>
-                                                        <td className="filter-details-td-sno">{idx + 1}</td>
-                                                        <td className="filter-details-td-date">
-                                                            <div className="date-main">{dateInfo.formatted}</div>
-                                                            <div className="date-weekday">{dateInfo.weekday}</div>
-                                                        </td>
-                                                        <td>
-                                                            <span className={`filter-details-type-tag ${filterDetails.filterType}`}>
-                                                                {rec.type}
-                                                            </span>
-                                                        </td>
-                                                        <td className="filter-details-td-reason">
-                                                            {rec.reason}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                (() => {
+                                    const indexOfLastRecord = currentPage * pageSize;
+                                    const indexOfFirstRecord = indexOfLastRecord - pageSize;
+                                    const currentRecords = filterDetails.records.slice(indexOfFirstRecord, indexOfLastRecord);
+
+                                    return (
+                                        <>
+                                            <div className="filter-details-table-wrapper">
+                                                <table className="filter-details-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th className="filter-details-th-sno">S.No</th>
+                                                            <th className="filter-details-th-date">Date</th>
+                                                            <th className="filter-details-th-type">Type</th>
+                                                            <th className="filter-details-th-reason">Reason</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {currentRecords.map((rec, idx) => {
+                                                            const dateInfo = formatRecordDate(rec.date);
+                                                            return (
+                                                                <tr key={rec.date || idx}>
+                                                                    <td className="filter-details-td-sno">{indexOfFirstRecord + idx + 1}</td>
+                                                                    <td className="filter-details-td-date">
+                                                                        <div className="date-main">{dateInfo.formatted}</div>
+                                                                        <div className="date-weekday">{dateInfo.weekday}</div>
+                                                                    </td>
+                                                                    <td>
+                                                                        <span className={`filter-details-type-tag ${filterDetails.filterType}`}>
+                                                                            {rec.type}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="filter-details-td-reason">
+                                                                        {rec.reason}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+
+                                            {filterDetails.records.length > 0 && (
+                                                <div className="filter-details-pagination-wrapper">
+                                                    <Pagination
+                                                        totalItems={filterDetails.records.length}
+                                                        pageSize={pageSize}
+                                                        currentPage={currentPage}
+                                                        onPageChange={(page) => setCurrentPage(page)}
+                                                    />
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()
                             )}
                         </div>
-                    )}
-                </div>
+                    </div>
+                )}
 
             </div>
         </>

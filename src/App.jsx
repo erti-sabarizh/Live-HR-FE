@@ -66,6 +66,7 @@ import TerminationLetter from "./Components/Admin/Letters/TerminationLetter";
 
 // Import your hook/component
 import useScrollToTop from "./Components/HeaderSidebar/useScrollToTop";
+import PortalLayout from "./Components/HeaderSidebar/PortalLayout";
 
 
 // ================= WEB CRAWLER =================
@@ -77,6 +78,7 @@ import CrawlerRiskSummaryPage from "./web crawling/CrawlerRiskSummaryPage";
 import CrawlerSEOSummaryPage from "./web crawling/CrawlerSEOSummaryPage";
 import CrawlerComplianceSummaryPage from "./web crawling/CrawlerComplianceSummaryPage";
 import CrawlerPagesSummaryPage from "./web crawling/CrawlerPagesSummaryPage";
+
 
 function App() {
   return (
@@ -94,8 +96,13 @@ function App() {
               {/* ================= AUTH ================= */}
               <Route path="/" element={<Login />} />
               <Route path="/forgot" element={<Forgot />} />
+              <Route path="/change-password" element={<ResetPassword />} />
 
-            {/* ================= ADMIN ================= */}
+              {/* ================= CPV MOBILE VERIFICATION (STANDALONE MOBILE UI) ================= */}
+
+              {/* ================= PORTAL PERSISTENT LAYOUT (PERSISTENT SIDEBAR & HEADER) ================= */}
+              <Route element={<PortalLayout />}>
+                {/* ================= ADMIN ================= */}
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route
               path="/admin/employees/add-employee"
@@ -177,7 +184,7 @@ function App() {
               path="/admin/hr-requests"
               element={<HrRequestsPage isAdmin={true} />}
             />
-
+          
 
             {/* ================= EMPLOYEE ================= */}
             <Route path="/emp/dashboard" element={<EmployeeDashboard />} />
@@ -194,7 +201,6 @@ function App() {
             <Route path="/emp/holidays" element={<Holidays />} />
             <Route path="/admin/Holiday" element={<Holidays />} />
             <Route path="/emp/remainder" element={<Remainder />} />
-            <Route path="/change-password" element={<ResetPassword />} />
             <Route
               path="/emp/holiday-requests"
               element={<EmployeeHoliday />}
@@ -241,6 +247,7 @@ function App() {
               path="/emp/hr-requests"
               element={<HrRequestsPage isAdmin={false} />}
             />
+          </Route>
 
 
             {/* ================= WEB CRAWLER ================= */}

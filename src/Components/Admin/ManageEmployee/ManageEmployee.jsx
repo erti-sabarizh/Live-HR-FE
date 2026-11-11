@@ -13,6 +13,9 @@ import ApprovalBanner from "../../Common/ApprovalBanner";
 import { FaUpload, FaCheckCircle, FaFileAlt, FaCalendarAlt, FaEye, FaEdit, FaSpinner, FaTrash } from "react-icons/fa";
 import { canHrEditEmployee, canHrViewEmployee } from "../../../utils/hrAccessHelper";
 
+// ⚡ Global in-memory cache for bank IFSC lookups
+const ifscGlobalCache = new Map();
+
 // ─── Salary Modal Component ───────────────────────────────────────────────────
 const SalaryModal = ({ emp, onClose }) => {
   const { user } = useUser();
@@ -1969,28 +1972,49 @@ const BankDetailsModal = ({ emp, onClose }) => {
     }
 
     if (name === "ifscCode" && value.length === 11) {
-      try {
-        setIsIFSCFetching(true);
-        setIsIFSCVerified(false);
-        const response = await fetch(`https://ifsc.razorpay.com/${value}`);
-        if (response.ok) {
-          const data = await response.json();
-          setBankForm(prev => ({
-            ...prev,
-            bankName: data.BANK || prev.bankName,
-            branch: data.BRANCH || prev.branch
-          }));
-          setIsIFSCVerified(true);
-          setFieldErrors(prev => ({ ...prev, bankName: "", branch: "", ifscCode: "" }));
-        } else {
-          flash("Invalid IFSC Code", true);
+      const codeUpper = value.toUpperCase();
+      if (ifscGlobalCache.has(codeUpper)) {
+        const cached = ifscGlobalCache.get(codeUpper);
+        setBankForm(prev => ({
+          ...prev,
+          bankName: cached.BANK || prev.bankName,
+          branch: cached.BRANCH || prev.branch
+        }));
+        setIsIFSCVerified(true);
+        setFieldErrors(prev => ({ ...prev, bankName: "", branch: "", ifscCode: "" }));
+      } else {
+        try {
+          setIsIFSCFetching(true);
           setIsIFSCVerified(false);
+          fetch(`https://ifsc.razorpay.com/${codeUpper}`)
+            .then(async (response) => {
+              if (response.ok) {
+                const data = await response.json();
+                ifscGlobalCache.set(codeUpper, data);
+                setBankForm(prev => ({
+                  ...prev,
+                  bankName: data.BANK || prev.bankName,
+                  branch: data.BRANCH || prev.branch
+                }));
+                setIsIFSCVerified(true);
+                setFieldErrors(prev => ({ ...prev, bankName: "", branch: "", ifscCode: "" }));
+              } else {
+                flash("Invalid IFSC Code", true);
+                setIsIFSCVerified(false);
+              }
+            })
+            .catch((error) => {
+              console.error("Error fetching IFSC details:", error);
+              setIsIFSCVerified(false);
+            })
+            .finally(() => {
+              setIsIFSCFetching(false);
+            });
+        } catch (error) {
+          console.error("Error fetching IFSC details:", error);
+          setIsIFSCVerified(false);
+          setIsIFSCFetching(false);
         }
-      } catch (error) {
-        console.error("Error fetching IFSC details:", error);
-        setIsIFSCVerified(false);
-      } finally {
-        setIsIFSCFetching(false);
       }
     } else if (name === "ifscCode") {
       setIsIFSCVerified(false);
@@ -2011,28 +2035,49 @@ const BankDetailsModal = ({ emp, onClose }) => {
     }
 
     if (name === "ifscCode" && value.length === 11) {
-      try {
-        setIsIFSCFetching(true);
-        setIsIFSCVerified(false);
-        const response = await fetch(`https://ifsc.razorpay.com/${value}`);
-        if (response.ok) {
-          const data = await response.json();
-          setNewBankForm(prev => ({
-            ...prev,
-            bankName: data.BANK || prev.bankName,
-            branch: data.BRANCH || prev.branch
-          }));
-          setIsIFSCVerified(true);
-          setNewFieldErrors(prev => ({ ...prev, bankName: "", branch: "", ifscCode: "" }));
-        } else {
-          flash("Invalid IFSC Code", true);
+      const codeUpper = value.toUpperCase();
+      if (ifscGlobalCache.has(codeUpper)) {
+        const cached = ifscGlobalCache.get(codeUpper);
+        setNewBankForm(prev => ({
+          ...prev,
+          bankName: cached.BANK || prev.bankName,
+          branch: cached.BRANCH || prev.branch
+        }));
+        setIsIFSCVerified(true);
+        setNewFieldErrors(prev => ({ ...prev, bankName: "", branch: "", ifscCode: "" }));
+      } else {
+        try {
+          setIsIFSCFetching(true);
           setIsIFSCVerified(false);
+          fetch(`https://ifsc.razorpay.com/${codeUpper}`)
+            .then(async (response) => {
+              if (response.ok) {
+                const data = await response.json();
+                ifscGlobalCache.set(codeUpper, data);
+                setNewBankForm(prev => ({
+                  ...prev,
+                  bankName: data.BANK || prev.bankName,
+                  branch: data.BRANCH || prev.branch
+                }));
+                setIsIFSCVerified(true);
+                setNewFieldErrors(prev => ({ ...prev, bankName: "", branch: "", ifscCode: "" }));
+              } else {
+                flash("Invalid IFSC Code", true);
+                setIsIFSCVerified(false);
+              }
+            })
+            .catch((error) => {
+              console.error("Error fetching IFSC details:", error);
+              setIsIFSCVerified(false);
+            })
+            .finally(() => {
+              setIsIFSCFetching(false);
+            });
+        } catch (error) {
+          console.error("Error fetching IFSC details:", error);
+          setIsIFSCVerified(false);
+          setIsIFSCFetching(false);
         }
-      } catch (error) {
-        console.error("Error fetching IFSC details:", error);
-        setIsIFSCVerified(false);
-      } finally {
-        setIsIFSCFetching(false);
       }
     } else if (name === "ifscCode") {
       setIsIFSCVerified(false);

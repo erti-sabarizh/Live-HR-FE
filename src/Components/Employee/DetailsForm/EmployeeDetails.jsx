@@ -537,6 +537,9 @@ const SearchableYearDropdown = ({
   );
 };
 
+// ⚡ In-memory cache to prevent duplicate external IFSC API calls
+const ifscMemoryCache = new Map();
+
 const EmployeeDetails = ({ isAdmin = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -546,6 +549,9 @@ const EmployeeDetails = ({ isAdmin = false }) => {
   const isHrRestrictedFromEdit = isDesignatedHr && !canHrEditEmployee(user);
   const effectiveIsAdmin = isAdminUser(user) || (isAdmin && !isHrRestrictedFromEdit);
   const isPrivileged = isAdminUser(user) || (isAdmin && !isHrRestrictedFromEdit) || (isDesignatedHr && !isHrRestrictedFromEdit);
+
+  // ⚡ Cache unmasked values in memory to eliminate re-fetching on toggles
+  const unmaskedCacheRef = useRef({});
 
   /* ================= STATE ================= */
   const [originalData, setOriginalData] = useState(null);
@@ -2260,17 +2266,25 @@ const EmployeeDetails = ({ isAdmin = false }) => {
   /* ================= UNMASK HANDLERS ================= */
   const toggleAadhaarVisibility = async () => {
     if (!showAadhaar && formData.aadhaarNo.includes("X")) {
-      try {
-        setIsFetchingAadhaar(true);
-        const url = isAdmin ? `/users/employee/${empId}?unmask=true` : `/users/get-employee?unmask=true`;
-        const response = await portalInstance.get(url);
-        if (response.data.success) {
-          setFormData((prev) => ({ ...prev, aadhaarNo: response.data.data.aadhaarNo }));
+      if (unmaskedCacheRef.current.aadhaarNo) {
+        setFormData((prev) => ({ ...prev, aadhaarNo: unmaskedCacheRef.current.aadhaarNo }));
+      } else {
+        try {
+          setIsFetchingAadhaar(true);
+          const url = isAdmin
+            ? `/users/employee/${empId}?unmask=true`
+            : `/users/employee/unmask-field/aadhaarNo`;
+          const response = await portalInstance.get(url);
+          const val = response.data?.value || response.data?.data?.aadhaarNo;
+          if (val) {
+            unmaskedCacheRef.current.aadhaarNo = val;
+            setFormData((prev) => ({ ...prev, aadhaarNo: val }));
+          }
+        } catch (err) {
+          console.error("❌ Failed to unmask Aadhaar:", err);
+        } finally {
+          setIsFetchingAadhaar(false);
         }
-      } catch (err) {
-        console.error("❌ Failed to unmask Aadhaar:", err);
-      } finally {
-        setIsFetchingAadhaar(false);
       }
     }
     setShowAadhaar(!showAadhaar);
@@ -2278,17 +2292,25 @@ const EmployeeDetails = ({ isAdmin = false }) => {
 
   const togglePanVisibility = async () => {
     if (!showPan && formData.panNo.includes("X")) {
-      try {
-        setIsFetchingPan(true);
-        const url = isAdmin ? `/users/employee/${empId}?unmask=true` : `/users/get-employee?unmask=true`;
-        const response = await portalInstance.get(url);
-        if (response.data.success) {
-          setFormData((prev) => ({ ...prev, panNo: response.data.data.panNo }));
+      if (unmaskedCacheRef.current.panNo) {
+        setFormData((prev) => ({ ...prev, panNo: unmaskedCacheRef.current.panNo }));
+      } else {
+        try {
+          setIsFetchingPan(true);
+          const url = isAdmin
+            ? `/users/employee/${empId}?unmask=true`
+            : `/users/employee/unmask-field/panNo`;
+          const response = await portalInstance.get(url);
+          const val = response.data?.value || response.data?.data?.panNo;
+          if (val) {
+            unmaskedCacheRef.current.panNo = val;
+            setFormData((prev) => ({ ...prev, panNo: val }));
+          }
+        } catch (err) {
+          console.error("❌ Failed to unmask PAN:", err);
+        } finally {
+          setIsFetchingPan(false);
         }
-      } catch (err) {
-        console.error("❌ Failed to unmask PAN:", err);
-      } finally {
-        setIsFetchingPan(false);
       }
     }
     setShowPan(!showPan);
@@ -2296,28 +2318,39 @@ const EmployeeDetails = ({ isAdmin = false }) => {
 
   const toggleAccountNumberVisibility = async () => {
     if (!showAccountNumber && (formData.accountNumber || "").includes("X")) {
-      try {
-        setIsFetchingAccountNumber(true);
-        const baseUrl = isAdmin ? `/users/employee/${empId}` : `/users/get-employee`;
-        const url = `${baseUrl}?unmask=true&type=edit`;
-        const response = await portalInstance.get(url);
-        if (response.data.success && response.data.data) {
-          const emp = response.data.data;
-          let acc = emp.accountNumber || "";
-          if (!acc && emp.bankHistory && Array.isArray(emp.bankHistory) && emp.bankHistory.length > 0) {
-            const latestHistory = [...emp.bankHistory].sort((a, b) =>
-              new Date(b.fromDate) - new Date(a.fromDate)
-            )[0];
-            acc = latestHistory?.accountNumber || "";
+      if (unmaskedCacheRef.current.accountNumber) {
+        setFormData((prev) => ({ ...prev, accountNumber: unmaskedCacheRef.current.accountNumber }));
+      } else {
+        try {
+          setIsFetchingAccountNumber(true);
+          const baseUrl = isAdmin ? `/users/employee/${empId}` : `/users/get-employee`;
+          const url = isAdmin
+            ? `${baseUrl}?unmask=true&type=edit`
+            : `/users/employee/unmask-field/accountNumber`;
+          const response = await portalInstance.get(url);
+          const val = response.data?.value || response.data?.data?.accountNumber;
+          if (val) {
+            unmaskedCacheRef.current.accountNumber = val;
+            setFormData((prev) => ({ ...prev, accountNumber: val }));
+          } else if (response.data?.success && response.data?.data) {
+            const emp = response.data.data;
+            let acc = emp.accountNumber || "";
+            if (!acc && emp.bankHistory && Array.isArray(emp.bankHistory) && emp.bankHistory.length > 0) {
+              const latestHistory = [...emp.bankHistory].sort((a, b) =>
+                new Date(b.fromDate) - new Date(a.fromDate)
+              )[0];
+              acc = latestHistory?.accountNumber || "";
+            }
+            if (acc) {
+              unmaskedCacheRef.current.accountNumber = acc;
+              setFormData((prev) => ({ ...prev, accountNumber: acc }));
+            }
           }
-          if (acc) {
-            setFormData((prev) => ({ ...prev, accountNumber: acc }));
-          }
+        } catch (err) {
+          console.error("❌ Failed to unmask Account Number:", err);
+        } finally {
+          setIsFetchingAccountNumber(false);
         }
-      } catch (err) {
-        console.error("❌ Failed to unmask Account Number:", err);
-      } finally {
-        setIsFetchingAccountNumber(false);
       }
     }
     setShowAccountNumber(!showAccountNumber);
@@ -2354,26 +2387,36 @@ const EmployeeDetails = ({ isAdmin = false }) => {
     } else {
       setBankErrors((prev) => ({ ...prev, ifscCode: "" }));
 
-      // Auto-fetch bank details when 11 digits are entered
+      // Auto-fetch bank details when 11 digits are entered with in-memory caching
       if (upper.length === 11) {
-        const fetchBankDetails = async () => {
-          try {
-            setIsIFSCFetching(true);
-            const response = await axios.get(`https://ifsc.razorpay.com/${upper}`);
-            if (response.data) {
-              setFormData(prev => ({
-                ...prev,
-                bankName: response.data.BANK || prev.bankName,
-                branch: response.data.BRANCH || prev.branch
-              }));
+        if (ifscMemoryCache.has(upper)) {
+          const cached = ifscMemoryCache.get(upper);
+          setFormData(prev => ({
+            ...prev,
+            bankName: cached.BANK || prev.bankName,
+            branch: cached.BRANCH || prev.branch
+          }));
+        } else {
+          const fetchBankDetails = async () => {
+            try {
+              setIsIFSCFetching(true);
+              const response = await axios.get(`https://ifsc.razorpay.com/${upper}`);
+              if (response.data) {
+                ifscMemoryCache.set(upper, response.data);
+                setFormData(prev => ({
+                  ...prev,
+                  bankName: response.data.BANK || prev.bankName,
+                  branch: response.data.BRANCH || prev.branch
+                }));
+              }
+            } catch (err) {
+              console.error("❌ IFSC Fetch Error:", err);
+            } finally {
+              setIsIFSCFetching(false);
             }
-          } catch (err) {
-            console.error("❌ IFSC Fetch Error:", err);
-          } finally {
-            setIsIFSCFetching(false);
-          }
-        };
-        fetchBankDetails();
+          };
+          fetchBankDetails();
+        }
       }
     }
   };
@@ -2984,7 +3027,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
       return isFieldAllowed(field);
     }
 
-    if (formData.isProfileCompleted === false) {
+    if (formData.isProfileCompleted === false || approvalStatus === "pending") {
       if (["salary", "status", "employmentStatus"].includes(field)) {
         return false;
       }
@@ -3114,7 +3157,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
       return Object.keys(sectionFieldMap);
     }
 
-    if (formData.isProfileCompleted === false) {
+    if (formData.isProfileCompleted === false || approvalStatus === "pending") {
       return Object.keys(sectionFieldMap);
     }
 
@@ -4597,13 +4640,13 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                 </div>
               )}
 
-            {!isAdmin && canEditProfile && !allowedFields.includes("ALL") && formData.isProfileCompleted !== false && approvalStatus !== "rejected" && (
+            {!isAdmin && canEditProfile && !allowedFields.includes("ALL") && formData.isProfileCompleted !== false && approvalStatus !== "rejected" && approvalStatus !== "pending" && (
               <div className="edit-highlight-banner">
                 You can edit: {visibleSections.join(", ").toUpperCase()}
               </div>
             )}
 
-            {!isAdmin && permissionsLoaded && !canEditProfile && formData.isProfileCompleted !== false && approvalStatus !== "rejected" && (
+            {!isAdmin && permissionsLoaded && !canEditProfile && formData.isProfileCompleted !== false && approvalStatus !== "rejected" && approvalStatus !== "pending" && (
               <div style={{
                 background: "#fff3cd",
                 border: "1px solid #ffc107",
@@ -5949,7 +5992,7 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                 <div id="field-wrapper-courses" className="employeedetails-courses-section">
                   <div className="employeedetails-d-flex employeedetails-justify-content-between employeedetails-align-items-center employeedetails-mb-3 flex-wrap gap-2">
                     <div>
-                      <h6 className="employeedetails-section-title employeedetails-mb-0">Degree / College Courses</h6>
+                      {/* <h6 className="employeedetails-section-title employeedetails-mb-0">Degree / College Courses</h6> */}
                       <p className="text-muted small mb-0">Add your Undergraduate (UG) and Postgraduate (PG) degree courses.</p>
                     </div>
                     {canEditField("courses") && (
@@ -7023,8 +7066,8 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                             </button>
                           ) : (
                             <>
-                              {!effectiveIsAdmin && !canEditProfile && (
-                                <p style={{ color: "#f44336", marginBottom: "10px", fontSize: "14px" }}>
+                              {!effectiveIsAdmin && !canEditProfile && approvalStatus !== "pending" && (
+                                <p style={{ color: "#f44336", marginBottom: "0", fontSize: "14px" }}>
                                   {editMessage || "You are not allowed to edit your profile. Please send a request."}
                                 </p>
                               )}
@@ -7033,7 +7076,13 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                                 className="employeedetails-btn employeedetails-btn-primary"
                                 onClick={handleSave}
                                 disabled={isSaving || (!effectiveIsAdmin && !canEditProfile)}
-                                style={{ minWidth: "150px" }}
+                                style={{
+                                  minWidth: "115px",
+                                  padding: "7px 16px",
+                                  fontSize: "13px",
+                                  borderRadius: "8px",
+                                  height: "36px",
+                                }}
                               >
                                 {isSaving
                                   ? "Submitting..."
@@ -7041,7 +7090,9 @@ const EmployeeDetails = ({ isAdmin = false }) => {
                                     ? "Save Changes"
                                     : isRejectedStatus
                                       ? "Send for Approve"
-                                      : "Send Admin for Approve"}
+                                      : approvalStatus === "pending"
+                                        ? "Update Profile"
+                                        : "Send Admin for Approve"}
                               </button>
                             </>
                           )}

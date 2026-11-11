@@ -940,78 +940,83 @@ ${cell.isCurrentMonth && !leave?.isGovtHoliday && !isWeekend ? "working-day" : "
       )}
 
       {showAllPopup && (
-        <div className="remainder-popup-backdrop">
-          <div className="remainder-popup remainder-all-popup">
+        <div className="remainder-popup-backdrop" onClick={() => setShowAllPopup(false)}>
+          <div className="remainder-popup remainder-all-popup" onClick={(e) => e.stopPropagation()}>
             <div className="remainder-popup-header">
               <h4>Remainder</h4>
-<button
-  type="button"
-  className="reminder-close-btn"
-  onClick={() => setShowAllPopup(false)}
->
-  ✕
-</button>
+              <button
+                type="button"
+                className="reminder-close-btn"
+                onClick={() => setShowAllPopup(false)}
+              >
+                ✕
+              </button>
             </div>
 
-            <div className="remainder-popup-body remainder-all-body-wrapper">
-              <div className="remainder-all-table">
-                <div className="remainder-all-header">
-                  <div>Member</div>
-                  <div>Task Title</div>
-                  <div>Date</div>
-                  <div>Category</div>
-                </div>
+            <div className="remainder-all-body-wrapper">
+              <table className="remainder-all-table">
+                <thead>
+                  <tr className="remainder-all-header">
+                    <th className="remainder-all-col-member">Member</th>
+                    <th className="remainder-all-col-title">Task Title</th>
+                    <th className="remainder-all-col-date">Date</th>
+                    <th className="remainder-all-col-category">Category</th>
+                  </tr>
+                </thead>
 
-                {allMonthReminders && allMonthReminders.length > 0 ? (
-                  allMonthReminders.map((rem) => (
-                    <div
-                      key={rem._id}
-                      className="remainder-all-row"
-                      onClick={() => {
-                        setActiveReminderId(rem._id);
-                        setShowAllPopup(false);
-                        setShowViewPopup(true);
-                      }}
-                    >
-                      {/* <input type="checkbox" onClick={(e) => e.stopPropagation()} /> */}
+                <tbody>
+                  {allMonthReminders && allMonthReminders.length > 0 ? (
+                    allMonthReminders.map((rem) => (
+                      <tr
+                        key={rem._id}
+                        className="remainder-all-row"
+                        onClick={() => {
+                          setActiveReminderId(rem._id);
+                          setShowAllPopup(false);
+                          setShowViewPopup(true);
+                        }}
+                      >
+                        <td className="remainder-all-col-member remainder-all-avatars">
+                          <img
+                            src={rem.participants?.[0]?.avatar || "/avatar.png"}
+                            alt="avatar"
+                            onError={(e) => (e.target.src = "/avatar.png")}
+                          />
+                        </td>
 
-                      <div className="remainder-all-avatars">
-                        <img
-                          src={rem.participants?.[0]?.avatar}
-                          alt="avatar"
-                          onError={(e) => (e.target.src = "/avatar.png")}
-                        />
-                      </div>
+                        <td className="remainder-all-col-title remainder-all-content">
+                          <div className="remainder-all-title">{rem.title}</div>
+                          {rem.details && (
+                            <div className="remainder-all-desc">{rem.details}</div>
+                          )}
+                        </td>
 
-                      <div className="remainder-all-content">
-                        <div className="remainder-all-title">{rem.title}</div>
-                        <div className="remainder-all-desc">{rem.details || "-"}</div>
-                      </div>
+                        <td className="remainder-all-col-date remainder-all-date">
+                          {moment.utc(rem.date).format("DD MMM")}
+                        </td>
 
-                      <div className="remainder-all-date">
-                        {moment.utc(rem.date).format("DD MMM")}
-                      </div>
-
-                      <div>
-                        <span
-                          className={`remainder-all-badge ${rem.category === "Submission"
-                            ? "submission"
-                            : rem.category === "Meeting"
-                              ? "meeting"
-                              : "work"
+                        <td className="remainder-all-col-category">
+                          <span
+                            className={`remainder-all-badge ${
+                              rem.category === "Submission"
+                                ? "submission"
+                                : rem.category === "Meeting"
+                                  ? "meeting"
+                                  : "work"
                             }`}
-                        >
-                          {rem.category}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="remainder-all-empty-row">
-                    <div colSpan="4">No reminders found for this month.</div>
-                  </div>
-                )}
-              </div>
+                          >
+                            {rem.category}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr className="remainder-all-empty-row">
+                      <td colSpan="4">No reminders found for this month.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
 
             <div className="remainder-all-footer">

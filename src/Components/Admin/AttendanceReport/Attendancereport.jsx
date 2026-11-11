@@ -69,6 +69,15 @@ function AttendanceReport() {
   const [loading, setLoading] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // ⚡ Debounce search input to avoid keystroke flooding
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
   const currentDate = new Date();
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const [selectedMonth, setSelectedMonth] = useState(monthNames[currentDate.getMonth()]);
@@ -128,7 +137,7 @@ function AttendanceReport() {
             params: {
               month: monthMap[selectedMonth],
               year: selectedYear,
-              search: searchTerm,
+              search: debouncedSearch,
               department: selectedDepartment || undefined,
             },
           }
@@ -148,7 +157,7 @@ function AttendanceReport() {
     };
 
     fetchAttendanceReport();
-  }, [selectedMonth, selectedYear, searchTerm, selectedDepartment]);
+  }, [selectedMonth, selectedYear, debouncedSearch, selectedDepartment]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {

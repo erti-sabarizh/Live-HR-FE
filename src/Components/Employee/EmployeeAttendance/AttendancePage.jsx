@@ -34,6 +34,68 @@ for (let i = 0; i < 24; i++) {
   }
 }
 
+// ── ISOLATED LIVE DURATION TIMER (Prevents entire page re-rendering every second) ──
+const LiveDurationTimer = React.memo(function LiveDurationTimer({
+  todayAttendance,
+  isCurrentlyCheckedIn,
+  hasCheckedOut,
+  showCheckOutTime,
+  hasCheckedIn,
+  loading,
+}) {
+  const [liveDuration, setLiveDuration] = useState("00h:00m:00s");
+
+  useEffect(() => {
+    let intervalId;
+    if (isCurrentlyCheckedIn) {
+      const tick = () => {
+        let totalMs = 0;
+        const s1In = todayAttendance?.checkIn1 || todayAttendance?.checkInTime;
+        const s1Out = todayAttendance?.checkOut1 || todayAttendance?.checkOutTime;
+        if (s1In && s1Out) {
+          totalMs += new Date(s1Out).getTime() - new Date(s1In).getTime();
+        } else if (s1In && !s1Out) {
+          totalMs += Date.now() - new Date(s1In).getTime();
+        }
+        if (todayAttendance?.checkIn2) {
+          if (todayAttendance?.checkOut2) {
+            totalMs += new Date(todayAttendance.checkOut2).getTime() - new Date(todayAttendance.checkIn2).getTime();
+          } else {
+            totalMs += Date.now() - new Date(todayAttendance.checkIn2).getTime();
+          }
+        }
+        const h = Math.floor(totalMs / 3600000);
+        const m = Math.floor((totalMs % 3600000) / 60000);
+        const s = Math.floor((totalMs % 60000) / 1000);
+        setLiveDuration(`${String(h).padStart(2, "0")}h:${String(m).padStart(2, "0")}m:${String(s).padStart(2, "0")}s`);
+      };
+      tick();
+      intervalId = setInterval(tick, 1000);
+    } else if (hasCheckedOut) {
+      let totalMs = 0;
+      const s1In = todayAttendance?.checkIn1 || todayAttendance?.checkInTime;
+      const s1Out = todayAttendance?.checkOut1 || todayAttendance?.checkOutTime;
+      if (s1In && s1Out) totalMs += new Date(s1Out).getTime() - new Date(s1In).getTime();
+      if (todayAttendance?.checkIn2 && todayAttendance?.checkOut2) {
+        totalMs += new Date(todayAttendance.checkOut2).getTime() - new Date(todayAttendance.checkIn2).getTime();
+      }
+      const h = Math.floor(totalMs / 3600000);
+      const m = Math.floor((totalMs % 3600000) / 60000);
+      const s = Math.floor((totalMs % 60000) / 1000);
+      setLiveDuration(`${String(h).padStart(2, "0")}h:${String(m).padStart(2, "0")}m:${String(s).padStart(2, "0")}s`);
+    } else {
+      setLiveDuration("00h:00m:00s");
+    }
+    return () => { if (intervalId) clearInterval(intervalId); };
+  }, [todayAttendance, isCurrentlyCheckedIn, hasCheckedOut]);
+
+  return (
+    <div className="emp-attendance-time-display">
+      {loading ? "Loading..." : (showCheckOutTime || hasCheckedIn) ? liveDuration : "00h:00m:00s"}
+    </div>
+  );
+});
+
 function AttendancePage() {
   const currentYear = new Date().getFullYear();
   const currentMonthIndex = new Date().getMonth();
@@ -58,7 +120,7 @@ function AttendancePage() {
   const [permissionTypeToday, setPermissionTypeToday] = useState(null);
   const [showPermissionTypeDropdown, setShowPermissionTypeDropdown] = useState(false);
   const permissionDropdownRef = useRef(null);
-  const [liveDuration, setLiveDuration] = useState("00h:00m:00s");
+  const isInitialMount = useRef(true);
   const [permissionType, setPermissionType] = useState("");
   const [permissionData, setPermissionData] = useState({
     fromTime: "",
@@ -157,51 +219,6 @@ function AttendancePage() {
     return `${h}h ${m.toString().padStart(2, "0")}m`;
   };
 
-  const formatDuration = (seconds) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${String(h).padStart(2, "0")}h:${String(m).padStart(2, "0")}m:${String(s).padStart(2, "0")}s`;
-  };
-
-  // ── LIVE TIMER ────────────────────────────────────────────
-  useEffect(() => {
-    let intervalId;
-    if (isCurrentlyCheckedIn) {
-      const tick = () => {
-        let totalMs = 0;
-        const s1In = todayAttendance?.checkIn1 || todayAttendance?.checkInTime;
-        const s1Out = todayAttendance?.checkOut1 || todayAttendance?.checkOutTime;
-        if (s1In && s1Out) {
-          totalMs += new Date(s1Out).getTime() - new Date(s1In).getTime();
-        } else if (s1In && !s1Out) {
-          totalMs += Date.now() - new Date(s1In).getTime();
-        }
-        if (todayAttendance?.checkIn2) {
-          if (todayAttendance?.checkOut2) {
-            totalMs += new Date(todayAttendance.checkOut2).getTime() - new Date(todayAttendance.checkIn2).getTime();
-          } else {
-            totalMs += Date.now() - new Date(todayAttendance.checkIn2).getTime();
-          }
-        }
-        setLiveDuration(formatDuration(Math.floor(totalMs / 1000)));
-      };
-      tick();
-      intervalId = setInterval(tick, 1000);
-    } else if (hasCheckedOut) {
-      let totalMs = 0;
-      const s1In = todayAttendance?.checkIn1 || todayAttendance?.checkInTime;
-      const s1Out = todayAttendance?.checkOut1 || todayAttendance?.checkOutTime;
-      if (s1In && s1Out) totalMs += new Date(s1Out).getTime() - new Date(s1In).getTime();
-      if (todayAttendance?.checkIn2 && todayAttendance?.checkOut2) {
-        totalMs += new Date(todayAttendance.checkOut2).getTime() - new Date(todayAttendance.checkIn2).getTime();
-      }
-      setLiveDuration(formatDuration(Math.floor(totalMs / 1000)));
-    } else {
-      setLiveDuration("00h:00m:00s");
-    }
-    return () => { if (intervalId) clearInterval(intervalId); };
-  }, [todayAttendance]);
 
   const checkNonWorkingDay = () => {
     if (!monthlyData?.calendarDays) return { status: false, reason: "" };
@@ -268,18 +285,26 @@ function AttendancePage() {
     }
   };
 
+  // ⚡ Load initial data in parallel without double-fetching
   useEffect(() => {
-    const loadData = async () => {
+    const loadInitial = async () => {
       setLoading(true);
-      await fetchMonthlyAttendance();
-      await fetchGovHolidays();
-      await fetchTodayAttendance();
+      await Promise.all([
+        fetchMonthlyAttendance(selectedMonth, selectedYear),
+        fetchGovHolidays(selectedYear),
+        fetchTodayAttendance(),
+      ]);
       setLoading(false);
     };
-    loadData();
+    loadInitial();
   }, []);
 
+  // ⚡ Handle dropdown changes (skip initial mount to prevent duplicate requests)
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     if (selectedMonth && selectedYear) {
       fetchMonthlyAttendance(selectedMonth, selectedYear);
       fetchGovHolidays(selectedYear);
@@ -695,9 +720,14 @@ function AttendancePage() {
                       <span className="emp-attendance-card-title">Working Hours</span>
                     </div>
                   </div>
-                  <div className="emp-attendance-time-display">
-                    {loading ? "Loading..." : (showCheckOutTime || hasCheckedIn) ? liveDuration : "00h:00m:00s"}
-                  </div>
+                  <LiveDurationTimer
+                    todayAttendance={todayAttendance}
+                    isCurrentlyCheckedIn={isCurrentlyCheckedIn}
+                    hasCheckedOut={hasCheckedOut}
+                    showCheckOutTime={showCheckOutTime}
+                    hasCheckedIn={hasCheckedIn}
+                    loading={loading}
+                  />
                 </Card.Body>
               </Card>
             </Col>

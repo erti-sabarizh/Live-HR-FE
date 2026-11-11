@@ -18,6 +18,7 @@ import {
   canHrDailyAttendance,
   canHrMonthlyAttendance,
 } from "../../utils/hrAccessHelper";
+import { SidebarLayoutContext } from "./SidebarLayoutContext";
 
 const ICON_BASE = "/ICONS";
 
@@ -51,8 +52,20 @@ const buildFileUrl = (fileUrl) => {
 const DEFAULT_AVATAR =
   "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg";
 
+/* ═════════════════════════════════════════════════════════════════════
+   ⚡ IN-MEMORY CACHE (Persists across route navigations without re-fetching)
+═════════════════════════════════════════════════════════════════════ */
+const SIDEBAR_CACHE = {
+  profileFetchedAt: 0,
+  notifications: null,
+  notificationsFetchedAt: 0,
+  calendarData: null,
+  calendarKey: "",
+  profileCompletion: null,
+  hasHolidayAssignment: null,
+};
 
-function Sidebar() {
+function SidebarContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, setUser } = useUser();
@@ -318,6 +331,8 @@ function Sidebar() {
         .sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0))
         .slice(0, 20);
       setNotifications(sorted);
+      SIDEBAR_CACHE.notifications = sorted;
+      SIDEBAR_CACHE.notificationsFetchedAt = Date.now();
     } catch (err) {
       console.error("Admin Notifications fetch failed:", err);
     }
@@ -553,12 +568,21 @@ function Sidebar() {
         ...generalNotifs,
       ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
       setNotifications(combined);
+      SIDEBAR_CACHE.notifications = combined;
+      SIDEBAR_CACHE.notificationsFetchedAt = Date.now();
     } catch (err) {
       console.error("Employee Notifications fetch failed:", err);
     }
   };
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (force = false) => {
+    // ⚡ OPTIMIZATION 2: 60-second in-memory TTL cache for notifications
+    const now = Date.now();
+    if (!force && SIDEBAR_CACHE.notifications && (now - SIDEBAR_CACHE.notificationsFetchedAt < 60000)) {
+      setNotifications(SIDEBAR_CACHE.notifications);
+      return;
+    }
+
     if (role === "admin") {
       await fetchAdminNotifications();
     } else if (role === "employee") {
@@ -566,11 +590,11 @@ function Sidebar() {
     }
   };
 
-  // ── Poll Notifications ──
+  // ── Poll Notifications (60-second interval) ──
   useEffect(() => {
     if (!role || !token || !loggedInUserId) return;
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 10000);
+    const interval = setInterval(() => fetchNotifications(true), 60000);
     return () => clearInterval(interval);
   }, [role, token, loggedInUserId]);
 
@@ -599,7 +623,11 @@ function Sidebar() {
         keys.push(notif.uniqueKey);
         localStorage.setItem(`dismissedNotificationKeys_${loggedInUserId}`, JSON.stringify(keys));
       }
-      setNotifications((prev) => prev.filter((n) => n.uniqueKey !== notif.uniqueKey));
+      setNotifications((prev) => {
+        const next = prev.filter((n) => n.uniqueKey !== notif.uniqueKey);
+        SIDEBAR_CACHE.notifications = next;
+        return next;
+      });
     } else {
       const dismissedIds = JSON.parse(
         localStorage.getItem(`dismissedNotifications_${loggedInUserId}`) || "[]"
@@ -634,7 +662,11 @@ function Sidebar() {
           console.error("Failed to read notification:", err);
         }
       }
-      setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+      setNotifications((prev) => {
+        const next = prev.filter((n) => n.id !== notif.id);
+        SIDEBAR_CACHE.notifications = next;
+        return next;
+      });
     }
   };
 
@@ -651,6 +683,7 @@ function Sidebar() {
       });
       localStorage.setItem(`dismissedNotificationKeys_${loggedInUserId}`, JSON.stringify(keys));
       setNotifications([]);
+      SIDEBAR_CACHE.notifications = [];
     } else {
       const dismissedIds = JSON.parse(
         localStorage.getItem(`dismissedNotifications_${loggedInUserId}`) || "[]"
@@ -696,6 +729,7 @@ function Sidebar() {
       );
       localStorage.setItem(`dismissedNotifications_${loggedInUserId}`, JSON.stringify(dismissedIds));
       setNotifications([]);
+      SIDEBAR_CACHE.notifications = [];
     }
   };
 
@@ -710,7 +744,11 @@ function Sidebar() {
         keys.push(notif.uniqueKey);
         localStorage.setItem(`dismissedNotificationKeys_${loggedInUserId}`, JSON.stringify(keys));
       }
-      setNotifications((prev) => prev.filter((n) => n.uniqueKey !== notif.uniqueKey));
+      setNotifications((prev) => {
+        const next = prev.filter((n) => n.uniqueKey !== notif.uniqueKey);
+        SIDEBAR_CACHE.notifications = next;
+        return next;
+      });
       if (notif.category === "instagram") {
         try {
           await portalInstance.put(`/api/notifications/${notif.id}/read`);
@@ -781,7 +819,11 @@ function Sidebar() {
           console.error("Failed to read notification:", err);
         }
       }
-      setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+      setNotifications((prev) => {
+        const next = prev.filter((n) => n.id !== notif.id);
+        SIDEBAR_CACHE.notifications = next;
+        return next;
+      });
       if (notif.type === "PERMISSION_DECISION") {
         navigate(notif.url || "/emp/request-leave");
       } else if (notif.type === "PROFILE_DECISION" || notif.type === "EDIT_DECISION") {
@@ -900,11 +942,26 @@ function Sidebar() {
   useEffect(() => {
     const loadUserData = async () => {
       try {
+        const stored = JSON.parse(sessionStorage.getItem("Erti-Portal") || "{}");
+
+        // ⚡ OPTIMIZATION (Step 2): Use cached user profile for 3 hours (3 * 3600 * 1000 ms)
+        const now = Date.now();
+        const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+        const loginTimeStr = sessionStorage.getItem("loginTime");
+        const loginTime = loginTimeStr ? new Date(loginTimeStr).getTime() : SIDEBAR_CACHE.profileFetchedAt;
+        const isProfileFresh = (now - loginTime) < THREE_HOURS_MS;
+
+        if (stored?.token && stored?.name && stored?.role && isProfileFresh) {
+          roleSetByAPI.current = true;
+          setUser(stored);
+          setRole(stored.role);
+          setUserLoading(false);
+          return;
+        }
+
         setUserLoading(true);
         setRole(null);
         roleSetByAPI.current = false;
-
-        const stored = JSON.parse(sessionStorage.getItem("Erti-Portal") || "{}");
 
         if (stored?.token) {
           try {
@@ -944,6 +1001,7 @@ function Sidebar() {
               roleSetByAPI.current = true;
               setUser(fullUserData);
               setRole(fullUserData.role);
+              SIDEBAR_CACHE.profileFetchedAt = Date.now();
 
               sessionStorage.setItem("Erti-Portal", JSON.stringify(fullUserData));
 
@@ -986,6 +1044,7 @@ function Sidebar() {
     loadUserData();
 
     const handlePermUpdate = () => {
+      SIDEBAR_CACHE.profileFetchedAt = 0; // Invalidate cache so fresh permissions are loaded
       loadUserData();
     };
     window.addEventListener("menuPermissionsUpdated", handlePermUpdate);
@@ -1000,17 +1059,46 @@ function Sidebar() {
   useEffect(() => {
     const fetchCompletion = async () => {
       if (role !== "employee") return;
+
+      // ⚡ OPTIMIZATION 4: If profile completion is already 100%, skip API call entirely
+      const stored = JSON.parse(sessionStorage.getItem("Erti-Portal") || "{}");
+      const existingScore = Number(user?.profileCompletion ?? stored?.profileCompletion ?? -1);
+      if (existingScore >= 100 || user?.isProfileCompleted || stored?.isProfileCompleted) {
+        setProfileCompletion(100);
+        SIDEBAR_CACHE.profileCompletion = 100;
+        return;
+      }
+
+      // If cached in memory for session, reuse without hitting API
+      if (SIDEBAR_CACHE.profileCompletion !== null) {
+        setProfileCompletion(SIDEBAR_CACHE.profileCompletion);
+        return;
+      }
+
+      try {
+        const storedScore = sessionStorage.getItem("sidebar_profile_completion");
+        if (storedScore !== null) {
+          const num = Number(storedScore);
+          SIDEBAR_CACHE.profileCompletion = num;
+          setProfileCompletion(num);
+          return;
+        }
+      } catch (_) {}
+
       try {
         const res = await portalInstance.get("/data/completion");
         if (res.data.success) {
-          setProfileCompletion(Number(res.data.profileCompletion || 0));
+          const score = Number(res.data.profileCompletion || 0);
+          setProfileCompletion(score);
+          SIDEBAR_CACHE.profileCompletion = score;
+          try { sessionStorage.setItem("sidebar_profile_completion", String(score)); } catch (_) {}
         }
       } catch (err) {
         console.error("Sidebar completion fetch failed", err);
       }
     };
     fetchCompletion();
-  }, [role]);
+  }, [role, user]);
 
   useEffect(() => {
     if (roleSetByAPI.current) return;
@@ -1031,10 +1119,33 @@ function Sidebar() {
         const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const month = MONTHS[today.getMonth()];
         const year = today.getFullYear();
+        const currentKey = `${role}_${month}_${year}_${loggedInUserId || "me"}`;
+
+        // ⚡ OPTIMIZATION 3: Check in-memory calendar cache for current month
+        if (SIDEBAR_CACHE.calendarKey === currentKey && SIDEBAR_CACHE.calendarData) {
+          setCalendarMonthlyData(SIDEBAR_CACHE.calendarData);
+          return;
+        }
+
+        // Also check sessionStorage
+        try {
+          const storedCal = sessionStorage.getItem(`sidebar_calendar_${currentKey}`);
+          if (storedCal) {
+            const parsed = JSON.parse(storedCal);
+            SIDEBAR_CACHE.calendarKey = currentKey;
+            SIDEBAR_CACHE.calendarData = parsed;
+            setCalendarMonthlyData(parsed);
+            return;
+          }
+        } catch (_) {}
 
         if (role === "employee") {
           const res = await portalInstance.get(`/portal/attendance/monthly?month=${month}&year=${year}`);
-          setCalendarMonthlyData(res.data.data || null);
+          const data = res.data.data || null;
+          SIDEBAR_CACHE.calendarKey = currentKey;
+          SIDEBAR_CACHE.calendarData = data;
+          setCalendarMonthlyData(data);
+          try { sessionStorage.setItem(`sidebar_calendar_${currentKey}`, JSON.stringify(data)); } catch (_) {}
         } else {
           const res = await portalInstance.get(`/users/attendance/govholidays?year=${year}`);
           const holidays = res.data?.data || [];
@@ -1042,7 +1153,11 @@ function Sidebar() {
           const calendarDays = holidays
             .filter((h) => new Date(h.date).getMonth() === currentMonth)
             .map((h) => ({ day: new Date(h.date).getDate(), month: "current", status: "holiday" }));
-          setCalendarMonthlyData({ calendarDays });
+          const data = { calendarDays };
+          SIDEBAR_CACHE.calendarKey = currentKey;
+          SIDEBAR_CACHE.calendarData = data;
+          setCalendarMonthlyData(data);
+          try { sessionStorage.setItem(`sidebar_calendar_${currentKey}`, JSON.stringify(data)); } catch (_) {}
         }
       } catch (err) {
         console.error("Sidebar calendar data fetch failed", err);
@@ -1051,7 +1166,7 @@ function Sidebar() {
     };
 
     fetchCalendarData();
-  }, [role]);
+  }, [role, loggedInUserId]);
 
   /* ══════════════════════════════════════════
      HOLIDAY ASSIGNMENT CHECK
@@ -1060,20 +1175,37 @@ function Sidebar() {
   useEffect(() => {
     const checkHolidayAssignment = async () => {
       if (role !== "employee") return;
+
+      // ⚡ OPTIMIZATION 5: Cache holiday assignment in memory & session state
+      if (SIDEBAR_CACHE.hasHolidayAssignment !== null) {
+        setHasHolidayAssignment(SIDEBAR_CACHE.hasHolidayAssignment);
+        return;
+      }
+
+      try {
+        const stored = sessionStorage.getItem(`hasHolidayAssignment_${loggedInUserId || "me"}`);
+        if (stored !== null) {
+          const val = stored === "true";
+          SIDEBAR_CACHE.hasHolidayAssignment = val;
+          setHasHolidayAssignment(val);
+          return;
+        }
+      } catch (_) {}
+
       try {
         const res = await portalInstance.get("/holiday-assignments/my");
         const result = res.data;
-        if (result.success && result.data && Array.isArray(result.data)) {
-          setHasHolidayAssignment(result.data.length > 0);
-        } else {
-          setHasHolidayAssignment(false);
-        }
+        const hasAssignment = (result.success && result.data && Array.isArray(result.data) && result.data.length > 0) || false;
+        setHasHolidayAssignment(hasAssignment);
+        SIDEBAR_CACHE.hasHolidayAssignment = hasAssignment;
+        try { sessionStorage.setItem(`hasHolidayAssignment_${loggedInUserId || "me"}`, String(hasAssignment)); } catch (_) {}
       } catch {
         setHasHolidayAssignment(false);
+        SIDEBAR_CACHE.hasHolidayAssignment = false;
       }
     };
     checkHolidayAssignment();
-  }, [role]);
+  }, [role, loggedInUserId]);
 
   /* ══════════════════════════════════════════
      ACTIVE ROUTE DETECTION
@@ -1148,6 +1280,7 @@ function Sidebar() {
         parent = "Audit Dashboard";
         child = "";
       }
+
       else if (path.includes("/admin/configuration")) {
         parent = "Configuration";
         child = "";
@@ -1448,6 +1581,7 @@ function Sidebar() {
       iconName: "Audit Dashboard",
       path: "/crawler",
     },
+
     // {
     //   title: "Social Media",
     //   iconName: "Social Media",
@@ -2408,6 +2542,15 @@ function Sidebar() {
       />
     </>
   );
+}
+
+function Sidebar(props) {
+  const isInsideLayout = React.useContext(SidebarLayoutContext);
+  // ⚡ STEP 1: If PortalLayout is active, suppress duplicate instance from individual page
+  if (isInsideLayout && !props.isRootLayout) {
+    return null;
+  }
+  return <SidebarContent {...props} />;
 }
 
 export default Sidebar;

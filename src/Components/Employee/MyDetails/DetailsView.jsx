@@ -727,6 +727,15 @@ const DetailsView = () => {
         } else {
           setEmployee(data);
           setIsNewUser(false);
+          // ⚡ Immediately initiate salary fetch in parallel without waiting for state re-render
+          const idToUse = isAdminView ? empId : (data.empIdString || data.empId);
+          if (idToUse) {
+            setSalaryLoading(true);
+            portalInstance.get(`/users/employee/salary/${idToUse}`)
+              .then(sRes => setSalaryHistory(sRes.data?.data || []))
+              .catch(sErr => console.error("Salary fetch error:", sErr))
+              .finally(() => setSalaryLoading(false));
+          }
         }
       } catch (err) {
         console.error("Details fetch error:", err);
@@ -742,13 +751,12 @@ const DetailsView = () => {
   }, [empId, isAdminView, isEmployeeView]);
 
   /* ════════════════════════════════════════════════════════════
-     FETCH SALARY HISTORY
+     FETCH SALARY HISTORY (FALLBACK IF NOT ALREADY LOADED)
   ════════════════════════════════════════════════════════════ */
   useEffect(() => {
     const fetchSalary = async () => {
-      //  FIX: Prioritize empIdString for employees to match security check
       const idToUse = isAdminView ? empId : employee?.empIdString;
-      if (!idToUse) return;
+      if (!idToUse || salaryHistory.length > 0) return;
 
       setSalaryLoading(true);
       try {
@@ -761,10 +769,10 @@ const DetailsView = () => {
       }
     };
 
-    if (employee) {
+    if (employee && salaryHistory.length === 0) {
       fetchSalary();
     }
-  }, [employee, isAdminView, empId]);
+  }, [employee, isAdminView, empId, salaryHistory.length]);
 
   /* ════════════════════════════════════════════════════════════
      PERMISSION CHECK — on mount
@@ -808,6 +816,14 @@ const DetailsView = () => {
 
       // ✅ FIRST TIME USER (canEdit = true but NOT approved)
       if (canEdit && message === "First-time profile setup") {
+        setRequestStatus(null);
+        setStatusMessage("");
+        setEditRejectionReason("");
+        return;
+      }
+
+      // ✅ PROFILE PENDING ADMIN APPROVAL (canEdit = true)
+      if (canEdit && (isPendingApproval || res.data?.profileApprovalStatus === "pending" || employee?.profileApprovalStatus === "pending")) {
         setRequestStatus(null);
         setStatusMessage("");
         setEditRejectionReason("");
@@ -1076,6 +1092,11 @@ const DetailsView = () => {
     if (requestStatus === "approved") {
       sessionStorage.setItem("allowedEditFields", JSON.stringify(allowedFields));
       navigate("/emp/my-details/edit", { state: { cameFromEdit: false } });
+      return;
+    }
+    // ✅ PENDING APPROVAL: allow direct editing
+    if (employee?.profileApprovalStatus === "pending") {
+      navigate("/emp/my-details/edit");
       return;
     }
     // ✅ NEW EMPLOYEE: profile not yet completed → allow free edit without request
@@ -2621,7 +2642,7 @@ const DetailsView = () => {
                 </>
               ) : isEmployeeView && employee?.profileApprovalStatus === "pending" ? (
                 <>
-                  Pending Admin Approval
+                  Edit Profile
                 </>
               ) : isEmployeeView && employee?.profileApprovalStatus === "rejected" ? (
                 <>

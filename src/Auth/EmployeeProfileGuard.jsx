@@ -56,7 +56,7 @@ const EmployeeProfileGuard = ({ children }) => {
 
     if (
       !fetchedOnceRef.current &&
-      (current.profileCompletion === undefined || Number(current.profileCompletion) < 100 || current.dateJoined === undefined)
+      (current.profileCompletion === undefined || current.dateJoined === undefined)
     ) {
       fetchedOnceRef.current = true;
       portalInstance

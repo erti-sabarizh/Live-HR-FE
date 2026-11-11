@@ -62,10 +62,7 @@ const AddEmployee = () => {
   React.useEffect(() => {
     const fetchMeta = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await portalInstance.get("/data/employees/basic", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await portalInstance.get("/data/employees/basic");
         if (res.data?.success) {
           const emps = res.data.employees || [];
 
